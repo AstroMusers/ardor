@@ -1,4 +1,4 @@
-# Star-Planet-Interactions
+# Star-Planet Interactions
 
 The scientific goal of this program is to give an expectation of what the phase curve of a transiting exoplanet, which could be inducing stellar flares in its host star, might look like. This is accomplished by consolidating different empirical and theoretical trends which allow common system parameters (e.g. semi-major axis, stellar mass, eccentricity) to be used in generating relevant interaction parameters (e.g. the stellar Alfven Surface, periastron location relative to transit, stellar magnetic field) which are needed in predicting the relative probability and power genarted of an induced flare. This allows for swift identification of salient systems.
 
