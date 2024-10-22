@@ -474,6 +474,8 @@ def tier0(TESS_fits_file, scale = 401):
     LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
     lc = LightCurve(time, flux, detrend_flux, pdcsap_error, fast, observation_time, trend.flux)
     return lc
+
+
 def tier1(detrend_flux, sigma, fast=False):
     '''
     
@@ -483,26 +485,30 @@ def tier1(detrend_flux, sigma, fast=False):
     detrend_flux : numpy array
         The median centered, detrended pdcsap flux data of the TESS light curve file, in units of electrons/second. 
         Intended to be from the second output of the tier 0 function
-    cadence : string
-        Either 'min' or 'sec'. Depends on what TESS fits file is used: a_fast-lc = 'sec', else 'min'
     sigma : float
         The sensitivity cutoff in which you wish to search for flares. Typically, this is 3 sigma, though some pipelines
-        go as low as 2.5. Will NOT work well below 1 sigma.
+        go as low as 2.5. Will NOT work well below 2 sigma.
     Returns
     -------
-    flares : numpy array
-        Returns an array of the **indices** of the flares in the time array passed. To get the BJD time of a given flare, 
-        pass 'time[flares[0]]', etc. Used in tier 2.
-    lengths : numpy array
-        A 1:1 numpy array with flares, giving the approximate duration of the flare in units of **indices** of the time 
-        axis. This will either be two minutes/index or 20 seconds an index, depending on what type of light curve is used.
-        Used in tier 2.
+    named tuple, the the following keys:
+        flares : numpy array
+            Returns an array of the **indices** of the flares in the time array passed. To get the BJD time of a given flare, 
+            pass 'time[flares[0]]', etc. Used in tier 2.
+        lengths : numpy array
+            A 1:1 numpy array with flares, giving the approximate duration of the flare in units of **indices** of the time 
+            axis. This will either be two minutes/index or 20 seconds an index, depending on what type of light curve is used.
+            Used in tier 2.
 
     '''
     flares, lengths = flare_ID(detrend_flux, sigma, fast=fast)
-    return flares, lengths
+    Flare = c.namedtuple('Flares', ['index', 'length'])
+    flare = Flare(flares, lengths)
+    return flare
 
-def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,output_dir = 'Output.csv', host_name = 'My_Host', T = 4000, host_radius = 1, csv = True, planet_period = 5, planet_epoch = 1000, Sim = False, injection = False, param=1):
+def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
+          output_dir = 'Output.csv', host_name = 'My_Host', T = 4000, 
+          host_radius = 1, csv = True, planet_period = 5, planet_epoch = 1000, 
+          Sim = False, injection = False):
     '''
     
     Parameters
@@ -535,6 +541,7 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,outpu
     Snippets of the flares found from 
 
     '''
+    param = 1
     TOI_ID_list = []
     flare_number = []
     peak_time = []
@@ -613,7 +620,8 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,outpu
         if chi_squared < chi_square_cutoff and popt[1] > 0 and popt[0] > 0:
             event_list.append(flare_events)
             flare_count += 1
-            param_list.append(param)
+            if Sim == True:
+                param_list.append(param)
             time_scale.append(popt[1])
             flare_time_scale.append(popt[1])
             amplitude.append(popt[0])
@@ -622,12 +630,6 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,outpu
             TOI_ID_list.append(host_name)
             flare_number.append(flare_count)
             chi_square_list.append(chi_squared)
-            try:
-                energy = bolo_flare_energy(popt, T, host_radius, pl.planck_integrator(600, 1000, T)/pl.planck_integrator(600, 1000, 9000), t_unit='minutes')
-            except:
-                energy = np.NaN
-            flare_energy.append(energy)
-            total_flare_energies.append(energy)
             Teff.append(T)
             radius.append(host_radius)
             phase_list.append(((time[flare_events] - (planet_epoch+planet_period/2)) % planet_period)/planet_period)
@@ -641,15 +643,17 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,outpu
                 np.savetxt(output_dir + '/' + str(host_name) + '/Flare_' + str(index) + '.csv', X, delimiter=',')
             total_flares += 1
     if Sim == False and injection == False:
-        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, flare_energy, phase_list, chi_square_list))
+        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, phase_list, chi_square_list))
         return ZZ
     if Sim == True:
-        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, flare_energy, phase_list, param_list, chi_square_list))
+        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, phase_list, chi_square_list))
         return ZZ
     if csv == True:
+        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius,phase_list, chi_square_list))
         with open(output_dir + '/' + str(host_name) + '/All_Flare_Parameters.csv', "a") as f:
             np.savetxt(f, ZZ, delimiter=",", fmt='%s')
             f.close()
+        return ZZ
     if injection == True and Sim == False:
         return event_list
                     

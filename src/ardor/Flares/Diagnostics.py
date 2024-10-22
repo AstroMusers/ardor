@@ -9,21 +9,46 @@ import ardor.Flares.Flare as Flares
 import numpy as np
 import os
 from matplotlib import pyplot as plt
-directory = 'C:/Users/Nate Whitsett/Desktop/Exoplanet_Hosts/Hosts/AUMic'
+import pandas as pd
+import warnings
+warnings.filterwarnings("ignore")
+parameters = pd.read_csv('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/TESS Data/All_Hosts.csv')
+directory = 'C:/Users/Nate Whitsett/Desktop/Exoplanet_Hosts/Hosts/'
+host_list = os.listdir(directory)
+flare_dir = 'C:/Users/Nate Whitsett/Desktop/Exoplanet_Hosts/Flares/'
 
-data = os.listdir(directory)[0]
-lc = Flares.TESS_data_extract(directory + '/' + data, PDCSAP_ERR=True)
-lc = Flares.tier0(directory + '/' + data, scale=401)
-flares, lengths = Flares.tier1(lc.detrended_flux, 3, fast=lc.fast_bool)
-# for flaress in flares:
-#     plt.axvline(x=time[flaress], color='red')
-#     plt.plot(time[flaress-50:flaress+50], detrend_flux[flaress-50:flaress+50])
-#     plt.show()
-#     input('Flare # ' + str(flaress))
-#     plt.clf()
-a = Flares.tier2(lc.time, lc.detrended_flux, lc.error, flares, lengths, chi_square_cutoff=15, csv=False)
-plt.plot(lc.time, lc.trend)
-# plt.plot(time, detrend_flux)
-print(len(flares) - len(a))
-print(a)
-# plt.plot(time[flares[0]-50:flares[0]+50], detrend_flux[flares[0]-50:flares[0]+50])
+for hosts in host_list:
+    print(hosts)
+    error_list = []
+    try:
+        input_dir = directory + str(hosts)
+        output_dir = flare_dir
+        try:
+            os.mkdir(flare_dir + str(hosts), mode=0o777)
+        except FileExistsError:
+            os.mkdir(flare_dir + str(hosts) + '(1)', mode=0o777)
+        file_list = os.listdir(input_dir)
+        for index, files in enumerate(file_list):
+            print('LC #: ' + str(index) )
+            Teff = float(parameters.loc[parameters['hostname'] == hosts]['st_teff'].item())
+            period = float(parameters.loc[parameters['hostname'] == hosts]['pl_orbper'].item())
+            radius = float(parameters.loc[parameters['hostname'] == hosts]['st_rad'].item())
+            epoch = float(parameters.loc[parameters['hostname'] == hosts]['pl_orbtper'].item())
+            if np.isnan(epoch) == True:
+                epoch = float(parameters.loc[parameters['hostname'] == hosts]['pl_tranmid'].item())
+                if np.isnan(epoch) == True:
+                    epoch = np.nan      
+            lc = Flares.tier0(input_dir + '/' + str(files))
+            flares = Flares.tier1(lc.detrended_flux, 2.5)
+            ZZ = Flares.tier2(lc.time, lc.flux, lc.error, flares.index, flares.length,
+                          chi_square_cutoff=15, output_dir=output_dir, host_name=hosts,
+                          T = Teff, host_radius=radius, csv=True, planet_period=period, 
+                          planet_epoch=epoch)
+            with open('C:/Users/Nate Whitsett/Desktop/Exoplanet_Hosts/T2_Host_Flare_Catalog.csv', "a") as f:
+                np.savetxt(f, ZZ, delimiter=",", fmt='%s')
+                f.close()
+    except:
+        error_list.append(hosts)
+        print('Error in pipeline! Consider rerunning: ' + str(hosts))
+        continue
+print(error_list)
