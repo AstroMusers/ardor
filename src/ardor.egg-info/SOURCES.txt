@@ -1,5 +1,6 @@
 README.md
 setup.py
+src/test.py
 src/ardor/Run.py
 src/ardor/__init__.py
 src/ardor/test.py

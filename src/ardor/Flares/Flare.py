@@ -16,6 +16,8 @@ from ardor.Flares import aflare
 import copy
 from ardor.Flares import allesfitter_priors
 import shutil
+import lightkurve as lk
+import collections as c
 # import allesfitter
 
 
@@ -214,7 +216,6 @@ def flare_ID(data, sigma, fast = False):
     peak_index = 0
     sig = sigma*mask_data[begin:end].std()
     mu = np.ma.mean(mask_data[begin:end])
-    grace = False
     g_counter = 0
     if fast == False:
         for index, flux in enumerate(data):
@@ -232,21 +233,18 @@ def flare_ID(data, sigma, fast = False):
                     flare = True
                     flare_length += 1
                     peak_index = index
-                if flare == True and data[index+1] > (mu + sig/4):
+                if flare == True and data[index+1] > (mu + sig/3):
                     flare_length += 1
-                    # print((data[index+1] - mu)/sig, 'Add to length')
-                elif flare == True and data[index+1] < (mu + sig/4) and flare_length < 4:
+                elif flare == True and data[index+1] < (mu + sig/3) and flare_length < 3:
                     flare = False
                     flare_length = 0
-                    # print((data[index+1] - mu)/sig, 'Terminate: Too Short')
-                elif flare == True and data[index+1] < (mu + sig/4) and flare_length >= 4:
+                elif flare == True and data[index+1] < (mu + sig/3) and flare_length >= 3:
                     flare = False
                     flare_indices.append(peak_index)
                     flare_length_list.append(flare_length)
                     if flare_length > 5:
                         g_counter = 20
                     flare_length = 0
-                    # print((data[index+1] - mu)/sig, 'Terminate: Success')
                 shift += 1
             except:
                 print('Flare_ID_Failed')
@@ -254,32 +252,32 @@ def flare_ID(data, sigma, fast = False):
     elif fast == True:
         for index, flux in enumerate(data):
             try:
-                if end >= len(data):
-                    sig = sigma*np.std(mask_data[begin:len(data)-1])
-                    mu = np.median(mask_data[begin:len(data)-1])
-                else:
-                    sig = sigma*np.std(mask_data[begin:end])
-                    mu = np.median(mask_data[begin:end])
+                if g_counter != 0:
+                    g_counter -=1
+                    continue
+                if shift == 200:
+                    begin += 200
+                    end += 200
+                    sig = sigma*mask_data[begin:end].std()
+                    mu = np.ma.mean(mask_data[begin:end])
+                    shift = 0
                 if flux > (mu + sig) and flare == False:
                     flare = True
                     flare_length += 1
                     peak_index = index
                 if flare == True and data[index+1] > (mu + sig/3):
                     flare_length += 1
-                if flare == True and data[index+1] < (mu + sig/3) and flare_length >= 8:
+                elif flare == True and data[index+1] < (mu + sig/3) and flare_length < 3:
+                    flare = False
+                    flare_length = 0
+                elif flare == True and data[index+1] < (mu + sig/3) and flare_length >= 3:
                     flare = False
                     flare_indices.append(peak_index)
                     flare_length_list.append(flare_length)
-                    flare_length = 0
-                    peak_index = 0
-                elif flare == True and data[index+1] < (mu + sig/3) and flare_length < 8:
-                    flare = False
+                    if flare_length > 10:
+                        g_counter = 20
                     flare_length = 0
                 shift += 1
-                if shift == 2:
-                    begin += 2
-                    end += 2
-                    shift = 0
             except:
                 print('Flare_ID_Failed')
                 continue
@@ -336,7 +334,7 @@ def delete_nans(time, data, error):
     error1 = np.array(error1)
     return time1, data1, error1
 
-def SMA_detrend(time, data, error, time_scale, LS_Iterations=2, model = False):
+def SMA_detrend(time, data, error, LS_Iterations=3, time_scale=100, model=False):
     '''
     
     This applies a windowed, Single Moving Average to detrend potentially
@@ -353,6 +351,7 @@ def SMA_detrend(time, data, error, time_scale, LS_Iterations=2, model = False):
     numpy array
         Returns the detrended data array.
     '''
+    
     time, data, error = delete_nans(time, data, error)
     count = 0
     ls = LS(time,data,error)
@@ -368,44 +367,52 @@ def SMA_detrend(time, data, error, time_scale, LS_Iterations=2, model = False):
         data = data - (design_matrix.dot(theta))
         LS_model = (offset + design_matrix.dot(theta))
         count += 1
-    # mask_data = np.ma.masked_array(copy.deepcopy(data), mask=np.zeros(len(data)))
-    # begin = 0
-    # end = 200
-    # shift = 0
-    # for index, values in enumerate(mask_data):
-    #     if index < 200:
-    #         sigma2 = np.std(mask_data[0:200])
-    #         median = np.median(mask_data[0:200])
-    #     if index > (len(mask_data) - 200):
-    #         sigma2 = np.std(mask_data[len(mask_data)-200:])
-    #         median = np.median(mask_data[len(mask_data)-200:])       
-    #     elif shift == 200:
-    #         sigma2 = np.std(mask_data[begin:end])
-    #         median = np.median(mask_data[begin:end])
-    #         shift = 0
-    #         begin += 200
-    #         end += 200
-    #     if mask_data[index] > (3*sigma2 + median):
-    #         mask_data.mask[index] = True
-    #     shift += 1
+    mask_data = np.ma.masked_array(copy.deepcopy(data), mask=np.zeros(len(data)))
+    begin = 0
+    end = 200
+    shift = 0
+    for index, values in enumerate(mask_data):
+        if index < 200:
+            sigma2 = np.std(mask_data[0:200])
+            median = np.median(mask_data[0:200])
+        if index > (len(mask_data) - 200):
+            sigma2 = np.std(mask_data[len(mask_data)-200:])
+            median = np.median(mask_data[len(mask_data)-200:])       
+        elif shift == 200:
+            sigma2 = np.std(mask_data[begin:end])
+            median = np.median(mask_data[begin:end])
+            shift = 0
+            begin += 200
+            end += 200
+        if np.abs(mask_data[index]) > (3*sigma2 + median):
+            mask_data.mask[index] = True
+        shift += 1
     mov_average = []
     j = 0
     i = 0
     for a in range(time_scale - 1):
-        window = data[a : 1 + a + j]
+        window = mask_data.data[a : 1 + a + j]
         mov_average.append(sum(window)/(j+1))
         j += 1
     while i < len(data) - time_scale + 1:
-        window = data[i : i + time_scale]
+        window = mask_data.data[i : i + time_scale]
         window_average = np.ma.round(np.ma.sum(window) / time_scale, 2)
         mov_average.append(window_average)
         i += 1
-    SMA = data - np.array(mov_average)
+    SMA = mask_data.data - np.array(mov_average)
     if model == False:
-        return SMA + 1
+        return mask_data.data
     elif model == True:
         return SMA + 1, mov_average
         
+def lk_detrend(data, time, scale=401, return_trend = False):
+    if return_trend == False:
+        lc = lk.LightCurve(flux = data, time = time).flatten(scale, sigma=3, return_trend=return_trend)
+        return lc.flux
+    elif return_trend == True:
+        lc, trend = lk.LightCurve(flux = data, time = time).flatten(scale, sigma=3, return_trend=return_trend)
+        return lc.flux, trend
+
 def flare_phase_folded_ID(phase, flare_array, period, epoch):
     new_ID_list = []
     for indices in flare_array:
@@ -427,9 +434,13 @@ def bolo_flare_energy(parameters, R_stellar, planck_ratio, t_unit='days', functi
     energy = (5.67e-8)*(9000**4)*(integral)*np.pi*(R_stellar*6.957e8*R_stellar*6.957e8)*planck_ratio*(1e7)*multiplier
     return energy
 
-def tier0(TESS_fits_file):
+def tier0(TESS_fits_file, scale = 401):
     '''
-    
+    Tier 0 of ardor. This function accepts a TESS '...lc.fits' file, and returns
+    a named tuple which contains a NAN free, detrended and normalized 
+    light curve. Additionally returns the observation time, as well as a boolean
+    denoting if it is 2 minute or 20 second cadence data, as well as the 
+    derived trend in the detrending process.
 
     Parameters
     ----------
@@ -437,25 +448,32 @@ def tier0(TESS_fits_file):
         The TESS light curve you wish to detrend and clean up.
     Returns
     -------
-    time : numpy array
-        The time axis, given in BJD - 2457000 (Days). Used next in tier 2
-    flux : numpy array
-        The raw, cleaned up pdcsap flux from the TESS file. To be used in tier 2.
-    detrend_flux : numpy array
-        Median centered pdcsap flux, given in electrons/second. Used next in tier 1
-    pdcsap_error : numpy array
-        Error in the detrended flux. Used next in tier 2
-
+    LightCurve : named tuple
+        A named tuple which has keys:
+            - time: time, BJD. (array)
+            - flux: normalized flux. (array)
+            - detrended_flux: Detrended, normalized flux. (array)
+            - error: Normalized error. (array)
+            - fast_bool: Boolean denoting if the TESS data is 2 minute or 20
+            second cadence. fast == True means 20 second cadence. (bool)
+            - obs_time: The total observation time reflected by the data, in
+            minutes. This only counts data present in the file, excludes gaps
+            or NAN values. (float)
+            - trend: The trend removed in the detrending step. (array)
     '''
-    b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
-    time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
-    detrend_flux = SMA_detrend(time, flux, pdcsap_error, 80, LS_Iterations=5)
     if TESS_fits_file.endswith('a_fast-lc.fits') == True:
         fast = True
+        cadence = (1/3)
     elif TESS_fits_file.endswith('a_fast-lc.fits') == False:  
         fast = False
-    return time, flux, detrend_flux, pdcsap_error, fast
-
+        cadence = 2
+    b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
+    time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
+    detrend_flux, trend = lk_detrend(flux, time, scale=scale, return_trend= True)
+    observation_time = cadence*len(time)
+    LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
+    lc = LightCurve(time, flux, detrend_flux, pdcsap_error, fast, observation_time, trend.flux)
+    return lc
 def tier1(detrend_flux, sigma, fast=False):
     '''
     
@@ -533,6 +551,7 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,outpu
     param_list = []
     phase_list = []
     event_list = []
+    chi_square_list = []
     flare_count = 0
     total_flares = 0
     if csv == True:
@@ -583,6 +602,12 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,outpu
                 popt, pcov = curve_fit(exp_decay, new_time[events:events+4], alles_data[events:events+4], maxfev=5000, sigma = error[events:events+4], absolute_sigma=True)
                 squares = ((alles_data[events:events+4] - exp_decay(new_time[events:events+4], *popt))/(error[events:events+4]))**2
                 chi_squared = np.sum(squares)/(2)
+            elif lengths[index] == 3:
+                alles_data = new_data
+                error = new_error
+                popt, pcov = curve_fit(exp_decay, new_time[events:events+3], alles_data[events:events+3], maxfev=5000, sigma = error[events:events+3], absolute_sigma=True)
+                squares = ((alles_data[events:events+3] - exp_decay(new_time[events:events+3], *popt))/(error[events:events+3]))**2
+                chi_squared = np.sum(squares)/(1)
         except:
             chi_squared = 1000
         if chi_squared < chi_square_cutoff and popt[1] > 0 and popt[0] > 0:
@@ -596,6 +621,7 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,outpu
             peak_time.append(norm_time)
             TOI_ID_list.append(host_name)
             flare_number.append(flare_count)
+            chi_square_list.append(chi_squared)
             try:
                 energy = bolo_flare_energy(popt, T, host_radius, pl.planck_integrator(600, 1000, T)/pl.planck_integrator(600, 1000, 9000), t_unit='minutes')
             except:
@@ -615,10 +641,10 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,outpu
                 np.savetxt(output_dir + '/' + str(host_name) + '/Flare_' + str(index) + '.csv', X, delimiter=',')
             total_flares += 1
     if Sim == False and injection == False:
-        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, flare_energy, phase_list))
+        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, flare_energy, phase_list, chi_square_list))
         return ZZ
     if Sim == True:
-        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, flare_energy, phase_list, param_list))
+        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, flare_energy, phase_list, param_list, chi_square_list))
         return ZZ
     if csv == True:
         with open(output_dir + '/' + str(host_name) + '/All_Flare_Parameters.csv', "a") as f:
@@ -687,7 +713,7 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, settings_tem
         with open(tier_3_output_dir + '/All_TOI_MCMC_Flares.csv', "a") as f:
             np.savetxt(f, ZZ, delimiter=",", fmt='%s')
             f.close()
-            
+
 # font = {'family': 'serif',
 #         'color':  'black',
 #         'weight': 'normal',
