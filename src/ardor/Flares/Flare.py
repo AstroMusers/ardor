@@ -188,21 +188,21 @@ def flare_ID(data, sigma, fast = False):
     '''
     mask_data = np.ma.masked_array(copy.deepcopy(data), mask=np.zeros(len(data)))
     begin = 0
-    end = 200
+    end = 100
     shift = 0
     for index, values in enumerate(mask_data):
-        if index < 200:
-            sigma2 = np.std(mask_data[0:200])
-            median = np.median(mask_data[0:200])
-        if index > (len(mask_data) - 200):
-            sigma2 = np.std(mask_data[len(mask_data)-200:])
-            median = np.median(mask_data[len(mask_data)-200:])       
-        elif shift == 200:
+        if index < 100:
+            sigma2 = np.std(mask_data[0:100])
+            median = np.median(mask_data[0:100])
+        if index > (len(mask_data) - 100):
+            sigma2 = np.std(mask_data[len(mask_data)-100:])
+            median = np.median(mask_data[len(mask_data)-100:])       
+        elif shift == 100:
             sigma2 = np.std(mask_data[begin:end])
             median = np.median(mask_data[begin:end])
             shift = 0
-            begin += 200
-            end += 200
+            begin += 100
+            end += 100
         if mask_data[index] > (sigma*sigma2 + median):
             mask_data.mask[index] = True
         shift += 1
@@ -211,7 +211,7 @@ def flare_ID(data, sigma, fast = False):
     flare_length_list = []
     flare = False
     begin = 0
-    end = 200
+    end = 100
     shift = 0
     peak_index = 0
     sig = sigma*mask_data[begin:end].std()
@@ -223,9 +223,9 @@ def flare_ID(data, sigma, fast = False):
                 if g_counter != 0:
                     g_counter -=1
                     continue
-                if shift == 200:
-                    begin += 200
-                    end += 200
+                if shift == 100:
+                    begin += 100
+                    end += 100
                     sig = sigma*mask_data[begin:end].std()
                     mu = np.ma.mean(mask_data[begin:end])
                     shift = 0
@@ -233,17 +233,17 @@ def flare_ID(data, sigma, fast = False):
                     flare = True
                     flare_length += 1
                     peak_index = index
-                if flare == True and data[index+1] > (mu + sig/3):
+                if flare == True and data[index+1] > (mu + sig/2):
                     flare_length += 1
-                elif flare == True and data[index+1] < (mu + sig/3) and flare_length < 3:
+                elif flare == True and data[index+1] < (mu + sig/2) and flare_length < 3:
                     flare = False
                     flare_length = 0
-                elif flare == True and data[index+1] < (mu + sig/3) and flare_length >= 3:
+                elif flare == True and data[index+1] < (mu + sig/2) and flare_length >= 3:
                     flare = False
                     flare_indices.append(peak_index)
                     flare_length_list.append(flare_length)
                     if flare_length > 5:
-                        g_counter = 20
+                        g_counter = 10
                     flare_length = 0
                 shift += 1
             except:
@@ -255,9 +255,9 @@ def flare_ID(data, sigma, fast = False):
                 if g_counter != 0:
                     g_counter -=1
                     continue
-                if shift == 200:
-                    begin += 200
-                    end += 200
+                if shift == 100:
+                    begin += 100
+                    end += 100
                     sig = sigma*mask_data[begin:end].std()
                     mu = np.ma.mean(mask_data[begin:end])
                     shift = 0
@@ -265,17 +265,17 @@ def flare_ID(data, sigma, fast = False):
                     flare = True
                     flare_length += 1
                     peak_index = index
-                if flare == True and data[index+1] > (mu + sig/3):
+                if flare == True and data[index+1] > (mu + sig/2):
                     flare_length += 1
-                elif flare == True and data[index+1] < (mu + sig/3) and flare_length < 3:
+                elif flare == True and data[index+1] < (mu + sig/2) and flare_length < 8:
                     flare = False
                     flare_length = 0
-                elif flare == True and data[index+1] < (mu + sig/3) and flare_length >= 3:
+                elif flare == True and data[index+1] < (mu + sig/2) and flare_length >= 8:
                     flare = False
                     flare_indices.append(peak_index)
                     flare_length_list.append(flare_length)
                     if flare_length > 10:
-                        g_counter = 20
+                        g_counter = 10
                     flare_length = 0
                 shift += 1
             except:
@@ -508,7 +508,7 @@ def tier1(detrend_flux, sigma, fast=False):
 def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
           output_dir = 'Output.csv', host_name = 'My_Host', T = 4000, 
           host_radius = 1, csv = True, planet_period = 5, planet_epoch = 1000, 
-          Sim = False, injection = False):
+          Sim = False, injection = False, const = 0):
     '''
     
     Parameters
@@ -549,10 +549,8 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
     time_scale = []
     Teff = []
     radius = []
-    total_flare_energies = []
     flare_amplitude = []
     flare_time_scale = []
-    flare_energy = []
     accepted_flare_index = []
     accepted_flare_number = []
     param_list = []
@@ -561,6 +559,7 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
     chi_square_list = []
     flare_count = 0
     total_flares = 0
+    flux = np.array(flux)
     if csv == True:
         os.makedirs(output_dir + '/' + str(host_name), exist_ok=True)
     for index, flare_events in enumerate(flares):
@@ -580,40 +579,34 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
         new_time = (new_time - new_time[events])*24*60
         try:
             if lengths[index] >= 25:
-                alles_data = new_data
                 error = new_error
-                popt, pcov = curve_fit(exp_decay, new_time[events:events+30], alles_data[events:events+30], maxfev=5000, sigma = error[events:events+30], absolute_sigma=True)
-                squares =((alles_data[events:events+30] - exp_decay(new_time[events:events+30], *popt))/(error[events:events+30]))**2
+                popt, pcov = curve_fit(exp_decay, new_time[events:events+30], new_data[events:events+30], maxfev=5000, sigma = error[events:events+30], absolute_sigma=True)
+                squares =((new_data[events:events+30] - exp_decay(new_time[events:events+30], *popt))/(error[events:events+30]))**2
                 chi_squared = np.sum(squares)/28
             elif lengths[index] >= 15 and lengths[index] < 25:
-                alles_data = new_data
                 error = new_error
-                popt, pcov = curve_fit(exp_decay, new_time[events:events+20],alles_data[events:events+20], maxfev=5000, sigma = error[events:events+20], absolute_sigma=True)
-                squares = ((alles_data[events:events+20] - exp_decay(new_time[events:events+20], *popt))/(error[events:events+20]))**2
+                popt, pcov = curve_fit(exp_decay, new_time[events:events+20],new_data[events:events+20], maxfev=5000, sigma = error[events:events+20], absolute_sigma=True)
+                squares = ((new_data[events:events+20] - exp_decay(new_time[events:events+20], *popt))/(error[events:events+20]))**2
                 chi_squared = np.sum(squares)/18
             elif lengths[index] > 5 and lengths[index] < 15:
-                alles_data = new_data
                 error = new_error
-                popt, pcov = curve_fit(exp_decay, new_time[events:events+10], alles_data[events:events+10], maxfev=5000, sigma = error[events:events+10], absolute_sigma=True)
-                squares = ((alles_data[events:events+10] - exp_decay(new_time[events:events+10], *popt))/(error[events:events+10]))**2
+                popt, pcov = curve_fit(exp_decay, new_time[events:events+10], new_data[events:events+10], maxfev=5000, sigma = error[events:events+10], absolute_sigma=True)
+                squares = ((new_data[events:events+10] - exp_decay(new_time[events:events+10], *popt))/(error[events:events+10]))**2
                 chi_squared = np.sum(squares)/8
             elif lengths[index] == 5:
-                alles_data = new_data
                 error = new_error
-                popt, pcov = curve_fit(exp_decay, new_time[events:events+5], alles_data[events:events+5], maxfev=5000, sigma = error[events:events+5], absolute_sigma=True)
-                squares = ((alles_data[events:events+5] - exp_decay(new_time[events:events+5], *popt))/(error[events:events+5]))**2
+                popt, pcov = curve_fit(exp_decay, new_time[events:events+5], new_data[events:events+5], maxfev=5000, sigma = error[events:events+5], absolute_sigma=True)
+                squares = ((new_data[events:events+5] - exp_decay(new_time[events:events+5], *popt))/(error[events:events+5]))**2
                 chi_squared = np.sum(squares)/(3)
             elif lengths[index] == 4:
-                alles_data = new_data
                 error = new_error
-                popt, pcov = curve_fit(exp_decay, new_time[events:events+4], alles_data[events:events+4], maxfev=5000, sigma = error[events:events+4], absolute_sigma=True)
-                squares = ((alles_data[events:events+4] - exp_decay(new_time[events:events+4], *popt))/(error[events:events+4]))**2
+                popt, pcov = curve_fit(exp_decay, new_time[events:events+4], new_data[events:events+4], maxfev=5000, sigma = error[events:events+4], absolute_sigma=True)
+                squares = ((new_data[events:events+4] - exp_decay(new_time[events:events+4], *popt))/(error[events:events+4]))**2
                 chi_squared = np.sum(squares)/(2)
             elif lengths[index] == 3:
-                alles_data = new_data
                 error = new_error
-                popt, pcov = curve_fit(exp_decay, new_time[events:events+3], alles_data[events:events+3], maxfev=5000, sigma = error[events:events+3], absolute_sigma=True)
-                squares = ((alles_data[events:events+3] - exp_decay(new_time[events:events+3], *popt))/(error[events:events+3]))**2
+                popt, pcov = curve_fit(exp_decay, new_time[events:events+3], new_data[events:events+3], maxfev=5000, sigma = error[events:events+3], absolute_sigma=True)
+                squares = ((new_data[events:events+3] - exp_decay(new_time[events:events+3], *popt))/(error[events:events+3]))**2
                 chi_squared = np.sum(squares)/(1)
         except:
             chi_squared = 1000
@@ -634,17 +627,17 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
             radius.append(host_radius)
             phase_list.append(((time[flare_events] - (planet_epoch+planet_period/2)) % planet_period)/planet_period)
             try:
-                X = np.column_stack((new_time, alles_data, error))
+                X = np.column_stack((new_time, new_data, error))
             except:
                 X = np.column_stack(([0],[0],[0]))
             accepted_flare_index.append(flares[index])
             accepted_flare_number.append(flare_count)
             if csv == True:
-                np.savetxt(output_dir + '/' + str(host_name) + '/Flare_' + str(index) + '.csv', X, delimiter=',')
+                np.savetxt(output_dir + '/' + str(host_name) + '/Flare_' + str(flare_count + const) + '.csv', X, delimiter=',')
             total_flares += 1
     if Sim == False and injection == False:
-        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, phase_list, chi_square_list))
-        return ZZ
+        ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, amplitude, time_scale, Teff, radius, phase_list, chi_square_list))
+        return ZZ, flare_count
     if Sim == True:
         ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, phase_list, chi_square_list))
         return ZZ

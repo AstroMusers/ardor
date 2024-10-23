@@ -8,6 +8,7 @@ Created on Mon Sep 18 11:06:28 2023
 from astroquery.mast import Observations
 import os
 import shutil
+import pandas as pd
 def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_list, radius = 0.01):
     '''
     
