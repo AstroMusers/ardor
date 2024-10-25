@@ -15,7 +15,7 @@ from scipy.stats import ks_1samp
 from scipy.stats import ksone
 import csv
 from itertools import zip_longest
-import Flare
+import ardor.Flares.Flare as Flare
 
 def ks_critical_value(n_trials, alpha):
     return ksone.ppf(1-alpha/2, n_trials)
@@ -27,8 +27,8 @@ font = {'family': 'serif',
 
 # sigma = 0.05
 num = str(0.5)
-target_dir = 'M_Flaring_SPI_' + num + '.csv'
-TOI_flares = pd.read_csv("C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Simulations/M_type_SPI_Sim/Simulation Output/" + target_dir)
+# target_dir = 'M_Flaring_SPI_' + num + '.csv'
+TOI_flares = pd.read_csv('C:/Users/Nate Whitsett/Desktop/All_Exoplanet_MCMC_Flares.csv')
 # alfven = pd.read_csv("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Grad School/Fall 2023/Research/Final Data/Alfven_Catalog_New.csv")
 # Exoplanet_flares = pd.read_csv("C:/Users/natha/OneDrive - Washington University in St. Louis/Grad School/Fall 2023/Research/Final Data/All_Exoplanet_MCMC_Flares.csv")
 # lower_phases = alfven["Sub_Alfv_lphase"]
@@ -57,23 +57,6 @@ obs_time = []
 host_list = []
 # directory = os.listdir('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/TESS Data/All_Exoplanet_Hosts')
 
-# for hosts in directory:
-#     hosts1 = hosts.replace(' ', '')
-#     time2 = 0
-#     files = os.listdir('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/TESS Data/All_Exoplanet_Hosts/' + str(hosts))
-#     # if hosts1 in set_hosts:
-#     print(hosts)
-#     for file in files:
-#         print(file[:-9:-1])
-#         if file[:-9:-1] == 'stif.cl_':
-#             try:
-#                 time, data = Flare.TESS_data_extract('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/TESS Data/All_Exoplanet_Hosts/'+hosts + '/' + str(file))
-#                 data = pd.Series(data).dropna()
-#                 time2 += len(data)*2
-#             except:
-#                 time2 += 27*24*60
-#     obs_time.append(time2)
-#     host_list.append(hosts)
 
 # hosts2 = targets["Host_ID"].tolist() 
 for hosts in set_hosts:
@@ -81,40 +64,40 @@ for hosts in set_hosts:
         print(hosts)
         name = str(hosts).replace(' ', '')
         # planet_period = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Orb_Per'])[0]
-        phases = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Phase'], dtype=float)
-        phases1 = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Phase'], dtype=float)
-        obs_time = 700300
-        # obs_time = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Observation_Time'])[0]
-        # peri_phases = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Periastron_Phase'])
-        # Teff = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Teff'])
-        # peri_phases_lower = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Periastron_Lower'])[0]
-        # peri_phases_upper = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Periastron_Upper'])[0]
+        phases = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Transit_Phase'], dtype=float)
+        phases1 = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Transit_Phase'], dtype=float)
+        # obs_time = 700300
+        peri_phases = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Periastron_Phase'])
+        peri_phases_lower = np.abs(np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Periastron_Lower'])[0])
+        peri_phases_upper = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Periastron_Upper'])[0]
         # observation_time = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Observation_Time'])[0]
-        # dlogz = np.median(np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'dlogZ']))
-        # energy = np.array(TOI_flares.loc[TOI_flares['Host_Name'] == hosts, 'Energy'])
-        # All_Energy.append(energy)
-        # if np.isnan(np.mean(peri_phases)) == False:
-        #     peri = True
-        #     continue
-        # if np.isnan(np.mean(peri_phases)) == True:
-        #     peri = False
-        # if np.isnan(peri_phases_lower) == True or np.isnan(peri_phases_upper) == True:
-        #     error = False
-        # if np.isnan(peri_phases_lower) == False and np.isnan(peri_phases_upper) == False:
-        #     error = True
-        # if np.isnan(np.mean(phases)) == True and peri == False:
-        #     continue
+        dlogz = np.median(np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'log(Z)']))
+        energy = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Energy'])
+        All_Energy.append(energy)
+        if len(phases) < 3 or len(peri_phases) < 3:
+            continue
+        if np.isnan(np.mean(peri_phases)) == False:
+            peri = True
+            phases = peri_phases    
+        if np.isnan(np.mean(peri_phases)) == True:
+            peri = False
+        if np.isnan(peri_phases_lower) == True or np.isnan(peri_phases_upper) == True:
+            error = False
+        if np.isnan(peri_phases_lower) == False and np.isnan(peri_phases_upper) == False:
+            error = True
+        if np.isnan(np.mean(phases)) == True and peri == False:
+            continue
         for phase_sample in range(N):
-            # if peri == False:
-            phases = phases + (1/N)
-            # elif peri == True and error == False:
-            #     peri_phases = peri_phases + np.random.normal(0, scale=0.05)
-            # elif peri == True and error == True:
-            #     check = np.random.random()
-            #     if check > 0.5:
-            #         peri_phases = peri_phases + np.abs(np.random.normal(0, scale=peri_phases_upper))
-            #     elif check < 0.5:
-            #         peri_phases = peri_phases - np.abs(np.random.normal(0, scale=peri_phases_lower))
+            if peri == False:
+                phases = phases + (1/N)
+            elif peri == True and error == False:
+                peri_phases = peri_phases + np.random.normal(0, scale=0.05)
+            elif peri == True and error == True:
+                check = np.random.random()
+                if check > 0.5:
+                    peri_phases = peri_phases + np.abs(np.random.normal(0, scale=peri_phases_upper))
+                elif check < 0.5:
+                    peri_phases = peri_phases - np.abs(np.random.normal(0, scale=peri_phases_lower))
             for index in range(len(phases)):
                 if phases[index] > 1:
                     phases[index] = phases[index] - 1 
@@ -125,11 +108,6 @@ for hosts in set_hosts:
             b = ad_test(phases, uniform(0,1), assume_sorted=True)
             KS_p_values.append(a.pvalue)
             AD_p_values.append(b.pvalue)
-        # if (np.median(KS_p_values) < 0.2 or np.median(AD_p_values) < 0.2) and len(peri_phases) >= 3 and hosts in const_list:
-        # if len(phases) >= 3:
-        #     interest_hosts.append([hosts,np.median(KS_p_values), np.median(AD_p_values), len(phases), planet_period, obs_time])
-            # if np.median(KS_p_values) < 0.1 and planet_period < 50:
-            #     print(hosts, np.median(KS_p_values), np.median(AD_p_values), len(phases), np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Orb_Per'])[0])
         x = np.sort(phases)
         y = np.arange(len(x))/float(len(x))
         All_CDF.append(x)
@@ -140,14 +118,13 @@ for hosts in set_hosts:
         interest_hosts.append([hosts,np.median(KS_p_values), np.median(AD_p_values)])
         KS_p_values = []
         AD_p_values = []
-        print(x)
 # elif count == len(peri_phases) and hosts != 'AUMic b':
 #     count = 0
-with open("C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Simulations/M_type_SPI_Sim/eCDFS/M_Type_SPI_Sim_CDF_" + num + ".csv","w+", newline='') as f:
-    writer = csv.writer(f)
-    for values in zip_longest(*All_CDF):
-        writer.writerow(values)
-with open("C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Simulations/M_type_SPI_Sim/Test Statistics/M_type_SPI_Sim_ADKS_" + num + ".csv","w+", newline='') as f:
+# with open("C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Simulations/M_type_SPI_Sim/eCDFS/M_Type_SPI_Sim_CDF_" + num + ".csv","w+", newline='') as f:
+#     writer = csv.writer(f)
+#     for values in zip_longest(*All_CDF):
+#         writer.writerow(values)
+with open("C:/Users/Nate Whitsett/Desktop/KS_AD.csv","w+", newline='') as f:
     writer = csv.writer(f)
     # writer.writerow(['KS p Values', 'KS Test Statistic', 'AD p Values', 'AD Test Statistic'])
     for values in interest_hosts:
