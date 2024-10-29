@@ -41,7 +41,6 @@ def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_l
     for index, TIC in enumerate(RA_list):
         count = 0
         download_dir = download_dir 
-        print(download_dir)
         try:
             os.mkdir(download_dir + '/' + str(host_name_list[index]))
         except FileExistsError:
@@ -57,13 +56,15 @@ def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_l
                                                     )
             data_products = Observations.get_product_list(obs_table)
         except:
+            print('No products with the TIC ID and RA/DEC combination! Try a larger radius. There may be no data for this target, too.')
             continue
         
         for indices, items in enumerate(data_products['productFilename']):
             if str(items).endswith('s_lc.fits') == True or str(items).endswith('a_fast-lc.fits') == True:
-                count += 1
-                if int(items[24:40]) == TIC_ID_list[index]:
+                if int(items[24:40]) == int(TIC_ID_list[index]):
                     try:
+                        count += 1
+                        print(count)
                         Observations.download_products(data_products[indices], download_dir = download_dir)
                     except:
                         print('There appears to be a server error! This can happen if MAST does not respond in time. The potentially undownloaded file(s) will appear once the run is finished')
@@ -91,7 +92,10 @@ def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_l
                         print('Warning! Some files may have not downloaded. We skipped it for now, but check at the end for a list of potentially undownloaded files.')
                         undownloaded.append(data)
                         continue
-        os.chmod(download_dir + '/mastDownload', 0o777)
-        shutil.rmtree(download_dir + '/mastDownload')
+            shutil.rmtree(download_dir + '/mastDownload')
+    for folders in os.listdir(download_dir):
+        if len(os.listdir(download_dir + '/' + folders)) == 0:
+            shutil.rmtree(download_dir + '/' + folders)
     print('The already existing directories are:', dirs)
-    print('The potentiall undownloaded files are:', undownloaded)
+    print('The potential undownloaded files are:', undownloaded)
+    

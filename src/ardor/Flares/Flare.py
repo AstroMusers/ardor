@@ -188,21 +188,21 @@ def flare_ID(data, sigma, fast = False):
     '''
     mask_data = np.ma.masked_array(copy.deepcopy(data), mask=np.zeros(len(data)))
     begin = 0
-    end = 100
+    end = 1000
     shift = 0
     for index, values in enumerate(mask_data):
-        if index < 100:
-            sigma2 = np.std(mask_data[0:100])
-            median = np.median(mask_data[0:100])
-        if index > (len(mask_data) - 100):
-            sigma2 = np.std(mask_data[len(mask_data)-100:])
-            median = np.median(mask_data[len(mask_data)-100:])       
-        elif shift == 100:
+        if index < 1000:
+            sigma2 = np.std(mask_data[0:1000])
+            median = np.median(mask_data[0:1000])
+        if index > (len(mask_data) - 1000):
+            sigma2 = np.std(mask_data[len(mask_data)-1000:])
+            median = np.median(mask_data[len(mask_data)-1000:])       
+        elif shift == 1000:
             sigma2 = np.std(mask_data[begin:end])
             median = np.median(mask_data[begin:end])
             shift = 0
-            begin += 100
-            end += 100
+            begin += 1000
+            end += 1000
         if mask_data[index] > (sigma*sigma2 + median):
             mask_data.mask[index] = True
         shift += 1
@@ -211,7 +211,7 @@ def flare_ID(data, sigma, fast = False):
     flare_length_list = []
     flare = False
     begin = 0
-    end = 100
+    end = 1000
     shift = 0
     peak_index = 0
     sig = sigma*mask_data[begin:end].std()
@@ -223,9 +223,9 @@ def flare_ID(data, sigma, fast = False):
                 if g_counter != 0:
                     g_counter -=1
                     continue
-                if shift == 100:
-                    begin += 100
-                    end += 100
+                if shift == 1000:
+                    begin += 1000
+                    end += 1000
                     sig = sigma*mask_data[begin:end].std()
                     mu = np.ma.mean(mask_data[begin:end])
                     shift = 0
@@ -255,9 +255,9 @@ def flare_ID(data, sigma, fast = False):
                 if g_counter != 0:
                     g_counter -=1
                     continue
-                if shift == 100:
-                    begin += 100
-                    end += 100
+                if shift == 1000:
+                    begin += 1000
+                    end += 1000
                     sig = sigma*mask_data[begin:end].std()
                     mu = np.ma.mean(mask_data[begin:end])
                     shift = 0
@@ -508,7 +508,7 @@ def tier1(detrend_flux, sigma, fast=False):
 def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
           output_dir = 'Output.csv', host_name = 'My_Host', T = 4000, 
           host_radius = 1, csv = True, planet_period = 5, planet_epoch = 1000, 
-          Sim = False, injection = False, const = 0):
+          Sim = False, injection = False, const = 0, obs_time=0):
     '''
     
     Parameters
@@ -557,6 +557,7 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
     phase_list = []
     event_list = []
     chi_square_list = []
+    obs_time_list = []
     flare_count = 0
     total_flares = 0
     flux = np.array(flux)
@@ -625,6 +626,7 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
             chi_square_list.append(chi_squared)
             Teff.append(T)
             radius.append(host_radius)
+            obs_time_list.append(obs_time)
             phase_list.append(((time[flare_events] - (planet_epoch+planet_period/2)) % planet_period)/planet_period)
             try:
                 X = np.column_stack((new_time, new_data, error))
@@ -636,13 +638,13 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
                 np.savetxt(output_dir + '/' + str(host_name) + '/Flare_' + str(flare_count + const) + '.csv', X, delimiter=',')
             total_flares += 1
     if Sim == False and injection == False:
-        ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, amplitude, time_scale, Teff, radius, phase_list, chi_square_list))
+        ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, amplitude, time_scale, Teff, radius, phase_list,obs_time_list, chi_square_list))
         return ZZ, flare_count
     if Sim == True:
-        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, phase_list, chi_square_list))
+        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, phase_list,obs_time_list, chi_square_list))
         return ZZ
     if csv == True:
-        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius,phase_list, chi_square_list))
+        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius,phase_list, obs_time_list, chi_square_list))
         with open(output_dir + '/' + str(host_name) + '/All_Flare_Parameters.csv', "a") as f:
             np.savetxt(f, ZZ, delimiter=",", fmt='%s')
             f.close()
