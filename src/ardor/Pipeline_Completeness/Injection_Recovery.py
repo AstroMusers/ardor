@@ -32,7 +32,7 @@ def Flare_injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False
         if sp_type == 'F':
             rate = 6e-05
         if sp_type == 'G':
-            rate = 1.18e-4
+            rate = 2e-4
         if sp_type == 'K':
             rate = 1.19e-4
     ## Poor statistics on this, but G type stars flare ~2e-5 per 2 minute cadence
@@ -141,7 +141,7 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G'):
                         for keys in flare_inject_dict_T1.keys():
                             if keys - 50 < flares and keys + 50 > flares:
                                 flare_inject_dict_T1[keys][3] = True        
-                flare_events_T2 = Flare.tier2(time, flux, error, flare_events_T1, lengths, chi_square_cutoff = 5, host_name = 'My_Host', csv = False,Sim = False, injection= True)
+                flare_events_T2 = Flare.tier2(time, flux, error, flare_events_T1, lengths, chi_square_cutoff = 15, host_name = 'My_Host', csv = False,Sim = False, injection= True)
                 if len(flare_events_T2) != 0:
                     for flares in flare_events_T2:
                         for keys in flare_inject_dict_T2.keys():
@@ -215,7 +215,7 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G'):
         Z = np.transpose(Z)
         np.savetxt(output_dir + '/Injection_Recovery_T2.csv', Z, delimiter=',')
 
-def Injection_Recovery_Grid(data_dir, grid_dir):
+def Injection_Recovery_Grid(data_dir, grid_dir, label = 'T1'):
     
     data = pd.read_csv(data_dir)
     data.columns.values[0] = 'Amplitude'
@@ -223,7 +223,6 @@ def Injection_Recovery_Grid(data_dir, grid_dir):
     data.columns.values[2] = 'Error'
     data.columns.values[3] = 'Integral'
     data.columns.values[4] = 'Accepted?'
-    data.columns.values[5] = 'Injected?'
     amp = list(data['Amplitude'])
     FWHM = list(data['FWHM'])
     error = list(data['Error'])
@@ -239,7 +238,7 @@ def Injection_Recovery_Grid(data_dir, grid_dir):
         tmp = []
         for index in range(len(amp)):
             if amp[index] > amp_bins[i] and amp[index] < amp_bins[i+1]:
-                tmp.append([integral[index], FWHM[index], Bool[index]])
+                tmp.append([amp[index], FWHM[index], Bool[index]])
         x.append(tmp)
     total = 0
     for i in range(len(FWHM_bins)):
@@ -261,8 +260,9 @@ def Injection_Recovery_Grid(data_dir, grid_dir):
                 tmp.append(pos/count * 100)
         y.append(tmp)
 
-    with open(grid_dir + '/Injection_Recover_Grid.csv', 'w', newline='') as f:
+    with open(grid_dir + '/Injection_Recover_Grid_' + label + '.csv', 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerows(y)
-
-Injection_Recovery_Grid('C:/Users/Nate Whitsett/Desktop/G_Type_LC/Output/Injection_Recovery_T1.csv', 'C:/Users/Nate Whitsett/Desktop/G_Type_LC/Output/')
+a = np.logspace(-3, 0, num=17)
+Injection_Recovery('C:/Users/Nate Whitsett/Desktop/G_Type_LC/', 'C:/Users/Nate Whitsett/Desktop/G_Type_LC/Output/')
+# Injection_Recovery_Grid('C:/Users/Nate Whitsett/Desktop/G_Type_LC/Output/Injection_Recovery_T2.csv', 'C:/Users/Nate Whitsett/Desktop/G_Type_LC/Output/', label = 'T2')
