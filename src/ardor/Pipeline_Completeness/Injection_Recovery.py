@@ -15,7 +15,7 @@ import time as timer
 import warnings
 import pandas as pd
 import csv
-from matplotlib import pyplot as plt
+import collections as c
 warnings.filterwarnings("ignore")
 def amp_log_normal():
     return np.random.lognormal(np.log(0.025), sigma=np.log(4.33924339))
@@ -24,7 +24,7 @@ def FWHM_uniform():
     return np.random.uniform(0.001388888, 0.041)
 
 
-def Flare_injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False, detrend = True, rates = True):
+def Flare_Injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False, detrend = True, rates = True):
     location_list = []
     ## Approximate flare rate per 2 minute cadence of flaring M/F stars (~0.5 flares/day)
     if flare_type == 'Flaring':
@@ -73,9 +73,9 @@ def Flare_injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False
                 normalized_sample = sample_baseline
                 FWHM = FWHM_uniform()
                 amp = amp_log_normal()
-                flare_inject = af.aflare1(time[location-300:location+300], time[location], FWHM, amp)
+                flare_inject = af.aflare1(time[location-1000:location+1000], time[location], FWHM, amp)
                 normalized_sample_inject = normalized_sample + flare_inject
-                data[location-300:location+300] = normalized_sample_inject
+                data[location-1000:location+1000] = normalized_sample_inject
                 location_list.append(location)
                 flares += 1
                 integral = simpson(af.aflare1(time, time[location], FWHM, amp), x=time)
@@ -86,7 +86,7 @@ def Flare_injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False
         for locations in location_list:
             location = locations
             counter = 0 
-            sample_baseline = data[location-300:location+300]
+            sample_baseline = data[location-1000:location+1000]
             baseline_error = np.std(sample_baseline)
             normalized_sample = sample_baseline
             FWHM = FWHM_uniform()
@@ -94,15 +94,17 @@ def Flare_injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False
             if np.isnan(baseline_error) == True:
                 print('Nan!')
                 continue
-            flare_inject = af.aflare1(time[location-300:location+300], time[location], FWHM, amp)
+            flare_inject = af.aflare1(time[location-1000:location+1000], time[location], FWHM, amp)
             normalized_sample_inject = normalized_sample + flare_inject
-            data[location-300:location+300] = np.median(sample_baseline)*normalized_sample_inject
+            data[location-1000:location+1000] = np.median(sample_baseline)*normalized_sample_inject
             flares += 1
             integral = simpson(af.aflare1(time, time[location], FWHM, amp), x=time)
             inject_location_index.append(location)
             flare_inject_dict_T1[location] = [amp, FWHM, baseline_error, False, True, integral]
             flare_inject_dict_T2[location] = [amp, FWHM, baseline_error, False, True, integral]
-    return data, time, error, flare_inject_dict_T1, flare_inject_dict_T2
+    LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'error'])
+    lc = LightCurve(time, data, error)
+    return lc, flare_inject_dict_T1, flare_inject_dict_T2
 
 
 def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False):
@@ -123,7 +125,7 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False):
             try:
                 for folders in a:
                     t1 = timer.time()
-                    flux, time, error, flare_inject_dict_T1, flare_inject_dict_T2 = Flare_injection(input_dir + '/' + M_dwarves + '/' + folders, detrend = True, rates = rate, sp_type = star_type)
+                    lc, flare_inject_dict_T1, flare_inject_dict_T2 = Flare_Injection(input_dir + '/' + M_dwarves + '/' + folders, detrend = True, rates = rate, sp_type = star_type)
                     if folders.endswith('a_fast-lc.fits') == True:
                         continue
                         fast = True
@@ -131,7 +133,7 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False):
                         fast = False
                     t2 = timer.time()
                     tier0_tau.append(t2-t1)
-                    flare_events_T1, lengths = Flare.flare_ID(flux, 2.5, fast = fast)
+                    flare_events_T1, lengths = Flare.flare_ID(lc.flux, 2.5, fast = fast)
                     t3 = timer.time()
                     tier1_tau.append(t3-t2)
                     if len(flare_events_T1) != 0:
@@ -139,7 +141,7 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False):
                             for keys in flare_inject_dict_T1.keys():
                                 if keys - 50 < flares and keys + 50 > flares:
                                     flare_inject_dict_T1[keys][3] = True        
-                    flare_events_T2 = Flare.tier2(time, flux, error, flare_events_T1, lengths, chi_square_cutoff = 20, host_name = 'My_Host', csv = False,Sim = False, injection= True)
+                    flare_events_T2 = Flare.tier2(lc.time, lc.flux, lc.error, flare_events_T1, lengths, chi_square_cutoff = 20, host_name = 'My_Host', csv = False,Sim = False, injection= True)
                     if len(flare_events_T2) != 0:
                         for flares in flare_events_T2:
                             for keys in flare_inject_dict_T2.keys():
@@ -267,5 +269,5 @@ def Injection_Recovery_Grid(data_dir, grid_dir, label = 'T1'):
     with open(grid_dir + '/Injection_Recover_Grid_' + label + '.csv', 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerows(y)
-Injection_Recovery('C:/Users/Nate Whitsett/Desktop/M_Type_LC/', 'C:/Users/Nate Whitsett/Desktop/M_Type_LC/Output/', rate = False)
+# Injection_Recovery('C:/Users/Nate Whitsett/Desktop/M_Type_LC/', 'C:/Users/Nate Whitsett/Desktop/M_Type_LC/Output/', rate = False)
 # Injection_Recovery_Grid('C:/Users/Nate Whitsett/Desktop/M_Type_LC/Output/Injection_Recovery_T1.csv', 'C:/Users/Nate Whitsett/Desktop/M_Type_LC/Output/', label = 'T1')

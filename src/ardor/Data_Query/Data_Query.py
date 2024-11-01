@@ -98,4 +98,6 @@ def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_l
             shutil.rmtree(download_dir + '/' + folders)
     print('The already existing directories are:', dirs)
     print('The potential undownloaded files are:', undownloaded)
-    
+
+data = pd.read_csv('C:/Users/whitsett.n/Desktop/TOI_List.csv')
+Bulk_TESS_lc_Query(data['ra'], data['dec'], data['tid'], 'C:/Users/whitsett.n/Desktop/TOI_Data', data['hostname'], radius = 0.5)

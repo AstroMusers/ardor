@@ -22,7 +22,6 @@ import collections as c
 from matplotlib import pyplot as plt
 # import allesfitter
 
-
 def linear(x, a, b, c):
     '''
     
@@ -208,6 +207,14 @@ def flare_ID(data, sigma, fast = False):
         if mask_data[index] > (sigma*sigma2 + median):
             mask_data.mask[index] = True
         shift += 1
+    plt.plot(range(len(mask_data)), mask_data)
+    plt.show()
+    input('E')
+    plt.clf()
+    plt.plot(range(len(data)), data)
+    plt.show(0)
+    input('E')
+    plt.clf()
     flare_indices = []
     flare_length = 0
     flare_length_list = []
@@ -218,13 +225,9 @@ def flare_ID(data, sigma, fast = False):
     peak_index = 0
     sig = sigma*mask_data[begin:end].std()
     mu = np.ma.mean(mask_data[begin:end])
-    g_counter = 0
     if fast == False:
         for index, flux in enumerate(data):
             try:
-                if g_counter != 0:
-                    g_counter -=1
-                    continue
                 if shift == 1000:
                     begin += 1000
                     end += 1000
@@ -242,10 +245,16 @@ def flare_ID(data, sigma, fast = False):
                     flare_length = 0
                 elif flare == True and data[index+1] < (mu + sig/2) and flare_length >= 3:
                     flare = False
-                    flare_indices.append(peak_index)
-                    flare_length_list.append(flare_length)
-                    if flare_length > 5:
-                        g_counter = 10
+                    peak_correction = np.argmax(data[peak_index:peak_index+flare_length])
+                    if len(flare_indices) > 0:
+                        if (flare_indices[-1] + flare_length_list[-1] + 10) > peak_index:
+                            continue
+                        elif (flare_indices[-1] + flare_length_list[-1] + 10) <= peak_index:
+                            flare_indices.append(peak_index+peak_correction)
+                            flare_length_list.append(flare_length)
+                    if len(flare_indices) == 0:
+                        flare_indices.append(peak_index+peak_correction)
+                        flare_length_list.append(flare_length)
                     flare_length = 0
                 shift += 1
             except:
@@ -254,9 +263,6 @@ def flare_ID(data, sigma, fast = False):
     elif fast == True:
         for index, flux in enumerate(data):
             try:
-                if g_counter != 0:
-                    g_counter -=1
-                    continue
                 if shift == 1000:
                     begin += 1000
                     end += 1000
@@ -274,15 +280,23 @@ def flare_ID(data, sigma, fast = False):
                     flare_length = 0
                 elif flare == True and data[index+1] < (mu + sig/2) and flare_length >= 8:
                     flare = False
-                    flare_indices.append(peak_index)
-                    flare_length_list.append(flare_length)
-                    if flare_length > 10:
-                        g_counter = 10
+                    peak_correction = np.argmax(data[peak_index:peak_index+flare_length])
+                    if len(flare_indices) > 0:
+                        if (flare_indices[-1] + flare_length_list[-1] + 10) > peak_index:
+                            print(flare_indices[-1], flare_length_list[-1], peak_index + peak_correction)
+                            continue
+                        elif (flare_indices[-1] + flare_length_list[-1] + 10) <= peak_index:
+                            flare_indices.append(peak_index+peak_correction)
+                            flare_length_list.append(flare_length)
+                    if len(flare_indices) == 0:
+                        flare_indices.append(peak_index+peak_correction)
+                        flare_length_list.append(flare_length)
                     flare_length = 0
                 shift += 1
             except:
                 print('Flare_ID_Failed')
                 continue
+    
     return flare_indices, flare_length_list
 
 def delete_nans(time, data, error):
@@ -510,7 +524,7 @@ def tier1(detrend_flux, sigma, fast=False):
 def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
           output_dir = 'Output.csv', host_name = 'My_Host', T = 4000, 
           host_radius = 1, csv = True, planet_period = 5, planet_epoch = 1000, 
-          Sim = False, injection = False, const = 0, obs_time=0):
+          Sim = False, injection = False, const = 0, obs_time=0, extract_window = 50):
     '''
     
     Parameters
@@ -566,24 +580,30 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
     if csv == True:
         os.makedirs(output_dir + '/' + str(host_name), exist_ok=True)
     for index, flare_events in enumerate(flares):
-        if flare_events >= 50 and len(flux) - flare_events > 50:
-            new_time = time[flare_events-50:flare_events+50]
-            new_data = flux[flare_events-50:flare_events+50]
-            new_error = pdcsap_error[flare_events-50:flare_events+50]
-        elif flare_events < 50:
-            new_time = time[0+flare_events:flare_events+50]
-            new_data = flux[0+flare_events:flare_events+50]
-            new_error = pdcsap_error[0+flare_events:flare_events+50]
-        elif len(flux) - flare_events < 50:
+        if flare_events >= extract_window and len(flux) - flare_events > extract_window:
+            new_time = time[flare_events-extract_window:flare_events+extract_window]
+            new_data = flux[flare_events-extract_window:flare_events+extract_window]
+            new_error = pdcsap_error[flare_events-extract_window:flare_events+extract_window]
+            check = 1
+        elif flare_events < extract_window:
+            new_time = time[:flare_events+extract_window]
+            new_data = flux[:flare_events+extract_window]
+            new_error = pdcsap_error[0+flare_events:flare_events+extract_window]
+            check = 2
+        elif len(flux) - flare_events < extract_window:
             new_time = time[flare_events:]
             new_data = flux[flare_events:]
             new_error = pdcsap_error[flare_events:]
-        events = np.argmax(new_data)
+            check = 3
         norm_time = time[flare_events]
-        new_time = (new_time - new_time[events])*24*60
+        new_time = (new_time - norm_time)*24*60
+        if check == 1:
+            events = extract_window
+        elif check == 2:
+            events = flare_events
+        elif check == 3:
+            events = len(flux) - flare_events
         r_sq = 0
-        # if injection == True:
-        #     new_error = 5e-3*np.ones(len(new_error))
         try:
             if lengths[index] >= 15:
                 popt, pcov = curve_fit(exp_decay, new_time[events:events+15],new_data[events:events+15], maxfev=5000, sigma = new_error[events:events+15], absolute_sigma=True)
@@ -612,7 +632,7 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
         except:
             print('Flare ID Error')
             chi_squared = 100
-        if (chi_squared < chi_square_cutoff and popt[1] > 0 and popt[0] > 0) or r_sq > 0.9:
+        if (chi_squared < chi_square_cutoff and popt[0] > 0 and popt[1] > 0) or r_sq > 0.8:
             event_list.append(flare_events)
             flare_count += 1
             if Sim == True:
@@ -716,6 +736,7 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, settings_tem
         with open(tier_3_output_dir + '/All_TOI_MCMC_Flares.csv', "a") as f:
             np.savetxt(f, ZZ, delimiter=",", fmt='%s')
             f.close()
+
 
 # font = {'family': 'serif',
 #         'color':  'black',
