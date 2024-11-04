@@ -12,10 +12,10 @@ import pandas as pd
 import warnings
 import time
 warnings.filterwarnings("ignore")
-parameters = pd.read_csv('C:/Users/whitsett.n/Desktop/TOI_2024.10.28_10.01.27.csv')
+parameters = pd.read_csv('C:/Users/whitsett.n/Desktop/TOI_List.csv')
 directory = 'C:/Users/whitsett.n/Desktop/TOI_Data/'
 host_list = os.listdir(directory)
-flare_dir = 'C:/Users/whitsett.n/Desktop/TOI_Flares/'
+flare_dir = 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/TOI_Flare_csvs/'
 
 for hosts in host_list:
     hosts = float(hosts)
@@ -62,11 +62,11 @@ for hosts in host_list:
                 tier_2_timer.append((tau4 - tau3)/len(flares.index))
             except:
                 tier_2_timer.append(np.nan)
-            with open('C:/Users/whitsett.n/Desktop/T2_Host_Flare_Catalog.csv', "a") as f:
+            with open('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Python Scripts/ardor/TOI_T2_Flares.csv', "a") as f:
                 np.savetxt(f, ZZ, delimiter=",", fmt='%s')
                 f.close()
             XX = np.column_stack((tier_0_timer, tier_1_timer, tier_2_timer))
-            with open('C:/Users/whitsett.n/Desktop/ardor_time_stats.csv', "a") as f:
+            with open('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Python Scripts/ardor/ardor_time_stats.csv', "a") as f:
                 np.savetxt(f, XX, delimiter=",", fmt='%s')
                 f.close()
     except:

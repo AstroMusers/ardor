@@ -15,11 +15,6 @@ font = {'family': 'serif',
         'weight': 'normal',
         'size': 12,
         }
-font_small = {'family': 'serif',
-        'color':  'black',
-        'weight': 'normal',
-        'size': 12,
-        }
 data_T1 = pd.read_csv('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Injection_Test_T1.csv', index_col=None)
 data_T2 = pd.read_csv('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Injection_Test_T2.csv', index_col=None)
 data_T1.sort_values(by=['Sigma'], ascending = True, inplace=True, ignore_index=True)

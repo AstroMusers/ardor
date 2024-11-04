@@ -207,14 +207,6 @@ def flare_ID(data, sigma, fast = False):
         if mask_data[index] > (sigma*sigma2 + median):
             mask_data.mask[index] = True
         shift += 1
-    plt.plot(range(len(mask_data)), mask_data)
-    plt.show()
-    input('E')
-    plt.clf()
-    plt.plot(range(len(data)), data)
-    plt.show(0)
-    input('E')
-    plt.clf()
     flare_indices = []
     flare_length = 0
     flare_length_list = []
