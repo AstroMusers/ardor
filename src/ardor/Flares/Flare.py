@@ -167,7 +167,7 @@ def phase_folder(time, period, epoch):
     phase = phase - period/2
     return phase
 
-def flare_ID(data, sigma, fast = False):
+def flare_ID(data, sigma, fast = False, injection = False):
     '''
     
 
@@ -217,6 +217,10 @@ def flare_ID(data, sigma, fast = False):
     peak_index = 0
     sig = sigma*mask_data[begin:end].std()
     mu = np.ma.mean(mask_data[begin:end])
+    if injection == True:
+        delay = 300
+    else:
+        delay = 10
     if fast == False:
         for index, flux in enumerate(data):
             try:
@@ -239,9 +243,9 @@ def flare_ID(data, sigma, fast = False):
                     flare = False
                     peak_correction = np.argmax(data[peak_index:peak_index+flare_length])
                     if len(flare_indices) > 0:
-                        if (flare_indices[-1] + flare_length_list[-1] + 10) > peak_index:
+                        if (flare_indices[-1] + flare_length_list[-1] + delay) > peak_index:
                             continue
-                        elif (flare_indices[-1] + flare_length_list[-1] + 10) <= peak_index:
+                        elif (flare_indices[-1] + flare_length_list[-1] + delay) <= peak_index:
                             flare_indices.append(peak_index+peak_correction)
                             flare_length_list.append(flare_length)
                     if len(flare_indices) == 0:
@@ -274,10 +278,10 @@ def flare_ID(data, sigma, fast = False):
                     flare = False
                     peak_correction = np.argmax(data[peak_index:peak_index+flare_length])
                     if len(flare_indices) > 0:
-                        if (flare_indices[-1] + flare_length_list[-1] + 10) > peak_index:
+                        if (flare_indices[-1] + flare_length_list[-1] + delay) > peak_index:
                             print(flare_indices[-1], flare_length_list[-1], peak_index + peak_correction)
                             continue
-                        elif (flare_indices[-1] + flare_length_list[-1] + 10) <= peak_index:
+                        elif (flare_indices[-1] + flare_length_list[-1] + delay) <= peak_index:
                             flare_indices.append(peak_index+peak_correction)
                             flare_length_list.append(flare_length)
                     if len(flare_indices) == 0:
@@ -442,7 +446,7 @@ def bolo_flare_energy(parameters, R_stellar, planck_ratio, t_unit='days', functi
     energy = (5.67e-8)*(9000**4)*(integral)*np.pi*(R_stellar*6.957e8*R_stellar*6.957e8)*planck_ratio*(1e7)*multiplier
     return energy
 
-def tier0(TESS_fits_file, scale = 401):
+def tier0(TESS_fits_file, scale = 401, injection = False):
     '''
     Tier 0 of ardor. This function accepts a TESS '...lc.fits' file, and returns
     a named tuple which contains a NAN free, detrended and normalized 

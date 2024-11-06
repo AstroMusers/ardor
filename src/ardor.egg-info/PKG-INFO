@@ -6,6 +6,3 @@ Home-page: https://github.com/AstroMusers/ardor.git
 Author: Nathan Whitsett
 Author-email: whitsett.n@wustl.edu
 License: MIT
-Requires-Dist: wheel
-Requires-Dist: bar
-Requires-Dist: greek
