@@ -2,10 +2,12 @@
 """
 Created on Fri Oct 25 10:34:09 2024
 
-@author: Nate Whitsett
+@author: natha
 """
 import pandas as pd
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore")
 def Data_Transfer(input_file, output_file, column_name_list=[]):
     '''
     Transfer host parameters based on host name.
@@ -39,11 +41,11 @@ def Data_Transfer(input_file, output_file, column_name_list=[]):
                 output_df = df
                 counter += 1
             output_df = pd.concat([output_df,df])
-        output = output_df
+            output = output_df
     print(output)
     output_df.to_csv(output_file, index = False)
             
             
         
-columns = ['pl_tranmid', 'pl_tranmiderr1', 'pl_tranmiderr2', 'pl_orbtper', 'pl_orbtpererr1', 'pl_orbtpererr2', 'r_close']
-Data_Transfer('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/TESS Data/All_Hosts.csv', 'C:/Users/Nate Whitsett/Desktop/All_Exoplanet_MCMC_Flares.csv', columns)
+columns = ['pl_tranmid', 'pl_tranmiderr1', 'pl_tranmiderr2', 'pl_orbtper', 'pl_orbtpererr1', 'pl_orbtpererr2', 'r_close', 'pl_orbper']
+Data_Transfer('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/TESS Data/All_Hosts.csv', 'C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All_Exoplanets/All_Exoplanet_MCMC_Flares.csv', columns)

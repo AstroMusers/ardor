@@ -167,7 +167,7 @@ def phase_folder(time, period, epoch):
     phase = phase - period/2
     return phase
 
-def flare_ID(data, sigma, fast = False, injection = False):
+def flare_ID(data, sigma, fast = False, injection = False, old = False):
     '''
     
 
@@ -218,7 +218,7 @@ def flare_ID(data, sigma, fast = False, injection = False):
     sig = sigma*mask_data[begin:end].std()
     mu = np.ma.mean(mask_data[begin:end])
     if injection == True:
-        delay = 300
+        delay = 50
     else:
         delay = 10
     if fast == False:
@@ -230,28 +230,52 @@ def flare_ID(data, sigma, fast = False, injection = False):
                     sig = sigma*mask_data[begin:end].std()
                     mu = np.ma.mean(mask_data[begin:end])
                     shift = 0
-                if flux > (mu + sig) and flare == False:
-                    flare = True
-                    flare_length += 1
-                    peak_index = index
-                if flare == True and data[index+1] > (mu + sig/2):
-                    flare_length += 1
-                elif flare == True and data[index+1] < (mu + sig/2) and flare_length < 3:
-                    flare = False
-                    flare_length = 0
-                elif flare == True and data[index+1] < (mu + sig/2) and flare_length >= 3:
-                    flare = False
-                    peak_correction = np.argmax(data[peak_index:peak_index+flare_length])
-                    if len(flare_indices) > 0:
-                        if (flare_indices[-1] + flare_length_list[-1] + delay) > peak_index:
-                            continue
-                        elif (flare_indices[-1] + flare_length_list[-1] + delay) <= peak_index:
+                if old == False:
+                    if flux > (mu + sig) and flare == False:
+                        flare = True
+                        flare_length += 1
+                        peak_index = index
+                    if flare == True and data[index+1] > (mu + sig/2):
+                        flare_length += 1
+                    elif flare == True and data[index+1] < (mu + sig/2) and flare_length < 3:
+                        flare = False
+                        flare_length = 0
+                    elif flare == True and data[index+1] < (mu + sig/2) and flare_length >= 3:
+                        flare = False
+                        peak_correction = np.argmax(data[peak_index:peak_index+flare_length])
+                        if len(flare_indices) > 0:
+                            if (flare_indices[-1] + flare_length_list[-1] + delay) > peak_index:
+                                continue
+                            elif (flare_indices[-1] + flare_length_list[-1] + delay) <= peak_index:
+                                flare_indices.append(peak_index+peak_correction)
+                                flare_length_list.append(flare_length)
+                        if len(flare_indices) == 0:
                             flare_indices.append(peak_index+peak_correction)
                             flare_length_list.append(flare_length)
-                    if len(flare_indices) == 0:
-                        flare_indices.append(peak_index+peak_correction)
-                        flare_length_list.append(flare_length)
-                    flare_length = 0
+                        flare_length = 0
+                elif old == True:
+                    if flux > (mu + sig) and flare == False:
+                        flare = True
+                        flare_length += 1
+                        peak_index = index
+                    if flare == True and data[index+1] > (mu + sig):
+                        flare_length += 1
+                    elif flare == True and data[index+1] < (mu + sig) and flare_length < 3:
+                        flare = False
+                        flare_length = 0
+                    elif flare == True and data[index+1] < (mu + sig) and flare_length >= 3:
+                        flare = False
+                        peak_correction = np.argmax(data[peak_index:peak_index+flare_length])
+                        if len(flare_indices) > 0:
+                            if (flare_indices[-1] + flare_length_list[-1] + delay) > peak_index:
+                                continue
+                            elif (flare_indices[-1] + flare_length_list[-1] + delay) <= peak_index:
+                                flare_indices.append(peak_index+peak_correction)
+                                flare_length_list.append(flare_length)
+                        if len(flare_indices) == 0:
+                            flare_indices.append(peak_index+peak_correction)
+                            flare_length_list.append(flare_length)
+                        flare_length = 0
                 shift += 1
             except:
                 print('Flare_ID_Failed')
@@ -733,47 +757,3 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, settings_tem
             np.savetxt(f, ZZ, delimiter=",", fmt='%s')
             f.close()
 
-
-# font = {'family': 'serif',
-#         'color':  'black',
-#         'weight': 'normal',
-#         'size': 14,
-#         }
-# plt.plot(time, data)
-
-
-
-# ### Pipeline Graphics for Publication
-# L = ax1.legend(prop={'size': 9.3}, ncol=2)
-# plt.setp(L.texts, family='Serif')
-# x = np.linspace(0, 6, num = 50)
-# popt, pcov = curve_fit(exp_decay, x, detrend[8856:8906])
-# x = np.linspace(0,0.02, num = 50)
-# ax2 = fig.add_subplot(gs[1, 0])
-# ax2.plot(x + time[8856], exp_decay(x, popt[0], popt[1], popt[2]), zorder=10, linewidth=2, linestyle='--', c='blue', label = 'Tier 2 Curve Fit')
-# ax2.plot(time[8830:8880], detrend[8830:8880],c='darkorange', linewidth=1.25)
-# ax2.set_xticks([])
-# ax2.set_yticks([])
-# ax2.set_ylabel('Flux', fontdict = font)
-# ax2.set_xlabel('Time (BJD)', fontdict = font)
-# L1 = ax2.legend(prop={'size':10})
-# plt.setp(L1.texts, family='Serif')
-
-
-
-# ax3 = fig.add_subplot(gs[1, 1])
-# x = np.linspace(0, 6, num = 55)
-# popt, pcov = curve_fit(exp_decay, x, detrend[9155:9210])
-# x = np.linspace(0,0.03, num = 50)
-# ax3.plot(x + time[9154], exp_decay(x, popt[0], popt[1], popt[2]), zorder=10, linestyle='--', linewidth=2, c='blue', label = 'Tier 2 Curve Fit')
-# ax3.plot(time[9120:9190], detrend[9120:9190],c='darkorange', linewidth=1.25, label = 'Detrended Flux')
-# ax3.set_xticks([])
-# ax3.set_yticks([])
-# ax3.set_ylabel('Flux', fontdict = font)
-# ax3.set_xlabel('Time (BJD)', fontdict = font)
-# plt.setp(L1.texts, family='Serif')
-# plt.savefig('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Ardor.png', dpi=600,bbox_inches='tight')
-# plt.show()
-
-
-# TESS_FITS_csv('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/TESS Data/TOI_Hosts/1410/tess2019253231442-s0016-0000000199444169-0152-s_lc.fits', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop')

@@ -29,7 +29,7 @@ def amp_log_normal():
     return np.random.lognormal(np.log(0.025), sigma=np.log(4.33924339))
 
 def FWHM_uniform():
-    return np.random.uniform(0.001388888, 0.041)
+    return np.random.uniform(0.0005, 0.041)
 
 
 def Flare_Injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False, detrend = True, rates = True,PR = False, sigma = 3, chi_sq = 1):
@@ -58,7 +58,7 @@ def Flare_Injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False
         error = lc.error
     ## Iterate over the time scale of the light curve
     flares = 0
-    location_list = [300*i + x for i, x in enumerate(sorted(np.random.choice(range(200, len(data)-7500), 15)))]
+    location_list = [500*i + x for i, x in enumerate(sorted(np.random.choice(range(200, len(data)-7500), 15)))]
     inject_location_index = []
     flare_inject_dict_T1 = dict()
     flare_inject_dict_T2 = dict()
@@ -121,7 +121,7 @@ def Flare_Injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False
     return lc, flare_inject_dict_T1, flare_inject_dict_T2
 
 
-def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False):
+def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False, old = False):
     lc_num = 0
     item_count = 0
     tier0_tau = []
@@ -147,20 +147,20 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False):
                         fast = False
                     t2 = timer.time()
                     tier0_tau.append(t2-t1)
-                    flare_events_T1, lengths = Flare.flare_ID(lc.flux, 3, fast = fast, injection = True)
+                    flare_events_T1, lengths = Flare.flare_ID(lc.flux, 3, fast = fast, injection = True, old = True)
                     t3 = timer.time()
                     tier1_tau.append(t3-t2)                
                     if len(flare_events_T1) != 0:
                         for flares in flare_events_T1:
                             for keys in flare_inject_dict_T1.keys():
                                 if keys - 50 < flares and keys + 50 > flares:
-                                    flare_inject_dict_T1[keys][3] = True
+                                    flare_inject_dict_T1[keys][4] = True
                     flare_events_T2 = Flare.tier2(lc.time, lc.flux, lc.error, flare_events_T1, lengths, chi_square_cutoff = 10, host_name = 'My_Host', csv = False,Sim = False, injection= True)
                     if len(flare_events_T2) != 0:
                         for flares in flare_events_T2:
                             for keys in flare_inject_dict_T2.keys():
                                 if keys - 50 < flares and keys + 50 > flares:
-                                    flare_inject_dict_T2[keys][3] = True
+                                    flare_inject_dict_T2[keys][4] = True
                     for keys in flare_inject_dict_T1.keys():
                         if flare_inject_dict_T1[keys][4] == False:
                             del flare_inject_dict_T2[keys]
@@ -193,7 +193,6 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False):
                     error_T2 = []
                     integral_T2 = []
                     injected_T2 = []
-                    
                     for d in test_flare_list_T1:
                         for key,value in d.items():
                             amp_list_T1.append(value[0])
@@ -226,52 +225,84 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False):
                 continue
     
 
-def Injection_Recovery_Grid(data_dir, grid_dir, label = 'T1'):
+def Injection_Recovery_Grid(data_dir, grid_dir, label = 'T1', energy = False):
     
     data = pd.read_csv(data_dir)
     data.columns.values[0] = 'Amplitude'
     data.columns.values[1] = 'FWHM'
     data.columns.values[2] = 'Error'
     data.columns.values[3] = 'Integral'
+    data.columns.values[5] = 'Injected?'
     data.columns.values[4] = 'Accepted?'
     amp = list(data['Amplitude'])
     FWHM = list(data['FWHM'])
+    injection = list(data['Injected?'])
     Bool = list(data['Accepted?'])
     integral = list(data['Integral'])
     amp_bins = np.logspace(-3, 0, num=17)
     FWHM_bins = np.linspace(0.001388888, 0.041, num=17)
+    int_bins = np.logspace(-5, -1, num=17)
     x = []
     y = []
+    if energy == False:
+        for i in range(len(amp_bins)-1):
+            tmp = []
+            for index in range(len(amp)):
+                if amp[index] > amp_bins[i] and amp[index] < amp_bins[i+1]:
+                    tmp.append([amp[index], FWHM[index], Bool[index]])
+            x.append(tmp)
+        total = 0
+        for i in range(len(FWHM_bins)):
+            tmp = []
+            for cells in x:
+                count = 0
+                pos = 0
+                for flares in cells:
+                    if flares[1] > FWHM_bins[i] and flares[1] < FWHM_bins[i+1]:
+                        count += 1
+                        total += 1
+                        if flares[2] == 1:
+                            pos += 1
+                if i == 16:
+                    continue
+                if count == 0:
+                    tmp.append(np.nan)
+                elif count != 0:
+                    tmp.append(pos/count * 100)
+            y.append(tmp)
+        with open(grid_dir + '/Injection_Recovery_Grid_' + label + '.csv', 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerows(y)
+    elif energy == True:
+        for i in range(len(int_bins)-1):
+            tmp = []
+            for index in range(len(integral)):
+                if integral[index] > int_bins[i] and integral[index] < int_bins[i+1]:
+                    tmp.append([integral[index], FWHM[index], Bool[index]])
+            x.append(tmp)
+        total = 0
+        for i in range(len(FWHM_bins)):
+            tmp = []
+            for cells in x:
+                count = 0
+                pos = 0
+                for flares in cells:
+                    if flares[1] > FWHM_bins[i] and flares[1] < FWHM_bins[i+1]:
+                        count += 1
+                        total += 1
+                        if flares[2] == 1:
+                            pos += 1
+                if i == 16:
+                    continue
+                if count == 0:
+                    tmp.append(np.nan)
+                elif count != 0:
+                    tmp.append(pos/count * 100)
+            y.append(tmp)
 
-    for i in range(len(amp_bins)-1):
-        tmp = []
-        for index in range(len(amp)):
-            if amp[index] > amp_bins[i] and amp[index] < amp_bins[i+1]:
-                tmp.append([amp[index], FWHM[index], Bool[index]])
-        x.append(tmp)
-    total = 0
-    for i in range(len(FWHM_bins)):
-        tmp = []
-        for cells in x:
-            count = 0
-            pos = 0
-            for flares in cells:
-                if flares[1] > FWHM_bins[i] and flares[1] < FWHM_bins[i+1]:
-                    count += 1
-                    total += 1
-                    if flares[2] == 1:
-                        pos += 1
-            if i == 16:
-                continue
-            if count == 0:
-                tmp.append(np.nan)
-            elif count != 0:
-                tmp.append(pos/count * 100)
-        y.append(tmp)
-
-    with open(grid_dir + '/Injection_Recover_Grid_' + label + '.csv', 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerows(y)
+        with open(grid_dir + '/Injection_Recovery_Grid_Energy' + label + '.csv', 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerows(y)
         
 def Precision_Recall(input_dir, output_dir, sigma_list, chi_set, star_type = 'G', rate = False):
     lc_num = 0
@@ -392,23 +423,13 @@ def Precision_Recall(input_dir, output_dir, sigma_list, chi_set, star_type = 'G'
             except:
                 continue
 
-def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set, tier = 'T1'):
+def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,output_dir, tier = 'T1'):
     data_T1 = pd.read_csv(PR_T1_dir, index_col=None, header=None)
     data_T2 = pd.read_csv(PR_T2_dir, index_col=None, header=None)
-
-    
-    Amp = data_T2[0].array
-    FWHM = data_T2[1].array
-    Error = data_T2[2].array
     Bool = data_T2[3].array
     False_Pos = data_T2[4].array
     sigma = data_T2[5].array
     chi_sq = data_T2[6].array
-    
-    
-    Amp1 = data_T1[0].array
-    FWHM1 = data_T1[1].array
-    Error1 = data_T1[2].array
     Bool1 = data_T1[3].array
     False_Pos1 = data_T1[4].array
     sigma1 = data_T1[5].array
@@ -515,23 +536,10 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set, t
         y_err1 = [y_err_l1, y_err_h1]
         x_err = [x_err_l, x_err_h]
         y_err = [y_err_l, y_err_h]
-        # print(simpson(y, x=x))
+        print(simpson(y, x=x))
         # plt.xlim(0, 1.1)
         # x = x/np.max(x)
         # x1 = x1/np.max(x1)
-        fig, ax = plt.subplots()
-        ax.set_ylim(0,1.1)
-        ax.set_xlabel('Recall', fontdict=font)
-        ax.set_ylabel('Precision', fontdict=font)
-        # ax.text(0.15, 0.2, 'Tier 1 AUC: ' + str(round(-simpson(y1, x=x1)+0.1*0.3, 2)), fontdict=font)
-        # ax.text(0.15, 0.125, 'Tier 2 AUC: ' + str(round(-simpson(y, x=x)+0.066*.56, 2)), fontdict=font)
-        # plt.plot(x,y, linestyle='--', marker='s',alpha=0.5, label='Tier2')
-        # plt.plot(x1,y1, linestyle='--', marker='s',alpha=0.5, label='Tier1')
-        ax.errorbar(x, y, xerr=x_err, yerr=y_err, linestyle='--', marker='s', alpha=0.5, label='Tier 1: G Type')
-        ax.errorbar(x1, y1, xerr=x_err1, yerr=y_err1, linestyle='--', marker='s', alpha=0.5, label = 'Tier 1: M Type')
-        ax.set_xticklabels(ax.get_xticklabels(), fontdict = font)
-        ax.set_yticklabels(ax.get_yticklabels(), fontdict = font)
-        ax.legend(prop={"family":"serif"})
         # plt.savefig('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Grad School/Fall 2023/Research/Injection Tests/Precision_Recall/Precision_Recall_Curve.png', dpi=600, bbox_inches="tight")
         plt.show()
     elif tier == 'T2':
@@ -622,30 +630,26 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set, t
         y_err1 = [y_err_l1, y_err_h1]
         x_err = [x_err_l, x_err_h]
         y_err = [y_err_l, y_err_h]
-        # print(simpson(y, x=x))
-        # plt.xlim(0, 1.1)
-        # x = x/np.max(x)
-        # x1 = x1/np.max(x1)
-        fig, ax = plt.subplots()
-        ax.set_ylim(0,1.1)
-        ax.set_xlabel('Recall', fontdict=font)
-        ax.set_ylabel('Precision', fontdict=font)
-        # ax.text(0.15, 0.2, 'Tier 1 AUC: ' + str(round(-simpson(y1, x=x1)+0.1*0.3, 2)), fontdict=font)
-        # ax.text(0.15, 0.125, 'Tier 2 AUC: ' + str(round(-simpson(y, x=x)+0.066*.56, 2)), fontdict=font)
-        # plt.plot(x,y, linestyle='--', marker='s',alpha=0.5, label='Tier2')
-        # plt.plot(x1,y1, linestyle='--', marker='s',alpha=0.5, label='Tier1')
-        ax.errorbar(x, y, xerr=x_err, yerr=y_err, linestyle='--', marker='s', alpha=0.5, label='Tier 2: G type')
-        ax.errorbar(x1, y1, xerr=x_err1, yerr=y_err1, linestyle='--', marker='s', alpha=0.5, label = 'Tier 2: M type')
-        ax.set_xticklabels(ax.get_xticklabels(), fontdict = font)
-        ax.set_yticklabels(ax.get_yticklabels(), fontdict = font)
-        ax.legend(prop={"family":"serif"})
-        # plt.savefig('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Grad School/Fall 2023/Research/Injection Tests/Precision_Recall/Precision_Recall_Curve.png', dpi=600, bbox_inches="tight")
-        plt.show()
+        df = pd.DataFrame()
+        df['x'] = x
+        df['x-'] = x_err[0]
+        df['x+'] = x_err[1]
+        df['y'] = y
+        df['y-'] = y_err[0]
+        df['y+'] = y_err[1]
+        df['x1'] = x1
+        df['x-1'] = x_err1[0]
+        df['x+1'] = x_err1[1]
+        df['y1'] = y1
+        df['y-1'] = y_err1[0]
+        df['y+1'] = y_err1[1]
+        df.to_csv(output_dir, index = None)
 
-# Injection_Recovery('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_LC', 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR')
-# Injection_Recovery_Grid('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR/Injection_Recovery_T2.csv', 
-#                         'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR',
-#                         label = 'T1')
-# Precision_Recall('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20])
-Precision_Recall('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_LC', 'C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20])
-# Precision_Recall_Data_Processing('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR/Precision_Recall_T1.csv', 'C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR/Precision_Recall_T1.csv', [2, 2.5, 3, 3.5, 4, 4.5, 5], chi_set=[1, 2, 5, 7.5, 10, 15, 20], tier = 'T1')
+# Injection_Recovery('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR')
+Injection_Recovery_Grid('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR/Injection_Recovery_T1.csv', 
+                        'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR',
+                        label = 'T1', energy = False)
+# Precision_Recall('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20])
+# Precision_Recall('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_LC', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20])
+
+# Precision_Recall_Data_Processing('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR/Precision_Recall_T1.csv', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR/Precision_Recall_T1.csv', [2, 2.5, 3, 3.5, 4, 4.5, 5], chi_set=[1, 2, 5, 7.5, 10, 15, 20], tier = 'T1')
