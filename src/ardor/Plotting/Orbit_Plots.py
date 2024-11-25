@@ -4,20 +4,25 @@ Created on Thu Sep 19 12:56:10 2024
 
 @author: natha
 """
-import Orbit_Model_Library as OML
+import ardor.SPI_Forward_Models.Orbit_Model_Library as OML
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 from matplotlib import patches as pt
 import matplotlib.animation as animation
+from matplotlib import font_manager
+from matplotlib.font_manager import FontProperties
 
-
+for fontpath in font_manager.findSystemFonts(fontpaths=None, fontext='ttf'):
+    if 'lmroman10-regular'.lower() in fontpath.lower():
+        path = fontpath
+font = FontProperties(fname=path)
 ###############################################################################
 ############ PLOTS FOR INVERSE CUBIC PROBABILITY DENSITY ######################
 ###############################################################################
-font = {'family': 'serif',
-        'weight': 'normal',
-        'size': 11,
-        }
+# font = {'family': 'serif',
+#         'weight': 'normal',
+#         'size': 11,
+#         }
 fig = plt.figure(figsize = (7,7), dpi=100)
 ax1 = plt.subplot(221)
 ax2 = plt.subplot(222, projection = 'polar')
@@ -102,46 +107,46 @@ for index, ecc in enumerate(P_e):
 artists = []
 star = OML.Star(1, 1, 1, radius=1, age=1e9, B = 5)
 planet = OML.Planet(1, 7, 0.03, 0.3, B=ratios, Star=star)
-for i in range(50):
+# for i in range(50):
     
-    ## TOP PLOT
-    theta = planet.phase[int(len(planet.phase)/50*(i-25))]
-    radius = planet.orbit[int(len(planet.phase)/50*(i-25))]
-    data, = ax2.plot(theta, radius, 'o', color='black')
-    data2, = ax1.plot(phase_lists[0][i], density_lists[0][i], 'o', color='blue')
-    data3, = ax1.plot(phase_lists[1][i], density_lists[1][i], 'o', color='orange')
-    data4, = ax1.plot(phase_lists[2][i], density_lists[2][i], 'o', color='green')
-    data5, = ax1.plot(phase_lists[3][i], density_lists[3][i], 'o', color='red')
-    data6, = ax1.plot(phase_lists[4][i], density_lists[4][i], 'o', color='purple')
+#     ## TOP PLOT
+#     theta = planet.phase[int(len(planet.phase)/50*(i-25))]
+#     radius = planet.orbit[int(len(planet.phase)/50*(i-25))]
+#     data, = ax2.plot(theta, radius, 'o', color='black')
+#     data2, = ax1.plot(phase_lists[0][i], density_lists[0][i], 'o', color='blue')
+#     data3, = ax1.plot(phase_lists[1][i], density_lists[1][i], 'o', color='orange')
+#     data4, = ax1.plot(phase_lists[2][i], density_lists[2][i], 'o', color='green')
+#     data5, = ax1.plot(phase_lists[3][i], density_lists[3][i], 'o', color='red')
+#     data6, = ax1.plot(phase_lists[4][i], density_lists[4][i], 'o', color='purple')
     
-    ## BOTTOM PLOT
-    data7, = ax3.plot(phase_lists[5][i], density_lists[5][i], 'o', color='blue')
-    data8, = ax3.plot(phase_lists[6][i], density_lists[6][i], 'o', color='orange')
-    data9, = ax3.plot(phase_lists[7][i], density_lists[7][i], 'o', color='green')
-    data10, = ax3.plot(phase_lists[8][i], density_lists[8][i], 'o', color='red')
-    data11, = ax4.plot(theta_lists[0][i], orbit_lists[0][i], 'o', color='blue')
-    data12, = ax4.plot(theta_lists[1][i], orbit_lists[1][i], 'o', color='orange')
-    data13, = ax4.plot(theta_lists[2][i], orbit_lists[2][i], 'o', color='green')
-    data14, = ax4.plot(theta_lists[3][i], orbit_lists[3][i], 'o', color='red')
-    artists.append([data,data2,data3,data4,data5,data6,data7,data8,data9,data10,data11,data12,data13,data14])
+#     ## BOTTOM PLOT
+#     data7, = ax3.plot(phase_lists[5][i], density_lists[5][i], 'o', color='blue')
+#     data8, = ax3.plot(phase_lists[6][i], density_lists[6][i], 'o', color='orange')
+#     data9, = ax3.plot(phase_lists[7][i], density_lists[7][i], 'o', color='green')
+#     data10, = ax3.plot(phase_lists[8][i], density_lists[8][i], 'o', color='red')
+#     data11, = ax4.plot(theta_lists[0][i], orbit_lists[0][i], 'o', color='blue')
+#     data12, = ax4.plot(theta_lists[1][i], orbit_lists[1][i], 'o', color='orange')
+#     data13, = ax4.plot(theta_lists[2][i], orbit_lists[2][i], 'o', color='green')
+#     data14, = ax4.plot(theta_lists[3][i], orbit_lists[3][i], 'o', color='red')
+#     artists.append([data,data2,data3,data4,data5,data6,data7,data8,data9,data10,data11,data12,data13,data14])
     
     
 ### Labels and legends for the regular plots
-ax3.set_xlabel('Phase')
-fig.text(0.05, 0.5, 'Probability Density', va='center', rotation='vertical', 
-          fontdict=font)
+ax3.set_xlabel('Phase', font=font, size = 17)
+fig.text(0.04, 0.5, 'Probability Density', va='center', rotation='vertical', 
+          font=font, size = 17)
 ax1.legend(borderpad = 0.5, labelspacing=0.25, title = '$\mathrm{B_{pl}/B_{star}}$',
             handlelength = 0.75)
 ax3.legend(borderpad = 0.5, labelspacing=0.25, title = 'e',
             handlelength = 0.75)
 ax1.text(.02, .97, '(a)', ha='left', va='top', transform=ax1.transAxes,
-            fontdict = font)
+            font = font, size =14)
 ax2.text(.02, .97, '(b)', ha='left', va='top', transform=ax2.transAxes,
-            fontdict = font)
+            font = font, size =14)
 ax3.text(.02, .97, '(c)', ha='left', va='top', transform=ax3.transAxes,
-            fontdict = font)
+            font = font, size =14)
 ax4.text(.02, .97, '(d)', ha='left', va='top', transform=ax4.transAxes,
-            fontdict = font)
+            font = font, size =14)
 
 
 ### Set r labels and maximums for polar plots ###
@@ -149,19 +154,19 @@ ax2.set_rmax(0.05)
 ax2.set_rticks([0.01, 0.02, 0.03, 0.04, 0.05])
 ax4.set_rmax(0.05)
 ax4.set_rticks([0.01, 0.02, 0.03, 0.04, 0.05])
-ax2.tick_params(axis='y', labelsize=9)
-ax4.tick_params(axis='y', labelsize=9)
+ax2.tick_params(axis='y', labelsize=11)
+ax4.tick_params(axis='y', labelsize=11)
 ax2.set_xticks([])
 ax4.set_xticks([])
 
 ###Plot Lines denoting Alfven surface
 ax2.add_patch(pt.Circle((0,0), star.Alfven, transform=ax2.transData._b, color='firebrick', linestyle = ':', fill=False, label = 'Alfven Surface', linewidth=2))
 ax4.add_patch(pt.Circle((0,0), star.Alfven, transform=ax4.transData._b, color='firebrick', linestyle = ':', fill=False, label = 'Alfven Surface', linewidth=2))
-ax2.text(0.6, 0.051, 'AU')
-ax4.text(0.6, 0.051, 'AU')
-ax2.text(1.95, 0.045, 'Alfvén Surface', color = 'firebrick', fontdict={'family': 'serif'})
-ax4.text(1.95, 0.045, 'Alfvén Surface', color = 'firebrick', fontdict={'family': 'serif'})
-# plt.savefig('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Publication Documents/Publication_2024/Inverse_Cubic.png',
-#             dpi=800, bbox_inches='tight')
-ani = animation.ArtistAnimation(fig=fig, artists=artists, interval=100)
-ani.save(filename="C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Python Scripts/Repos/ardor/test.gif", writer="pillow")  
+ax2.text(0.6, 0.051, 'AU',font = font, size =14)
+ax4.text(0.6, 0.051, 'AU',font = font, size =14)
+ax2.text(2.05, 0.047, 'Alfvén Surface', color = 'firebrick', font = font, size =13)
+ax4.text(2.05, 0.047, 'Alfvén Surface', color = 'firebrick', font = font, size =13)
+plt.savefig('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Publication Documents/Publication_2024/Inverse_Cubic_Poster.png',
+            dpi=1000, bbox_inches='tight')
+# ani = animation.ArtistAnimation(fig=fig, artists=artists, interval=100)
+# ani.save(filename="C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Python Scripts/Repos/ardor/test.gif", writer="pillow")  

@@ -19,15 +19,15 @@ font_small ={'family': 'serif',
         'weight': 'normal',
         'size': 12,
         }
-data = pd.read_csv('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Flare_Catalog_Files/All_Exoplanets/All_Exoplanet_MCMC_Flares2.csv')
-data2 = pd.read_csv("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Flare_Catalog_Files/All TOIs/All_TOI_MCMC_Flares.csv")
-data3 = pd.read_csv('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Flare_Catalog_Files/Literature_Catalogs/Gunther_2020.csv')
-data4 = pd.read_csv('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Flare_Catalog_Files/Literature_Catalogs/Illin_2024.csv')
-data5 = pd.read_csv('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Flare_Catalog_Files/Literature_Catalogs/Pietras_2020.csv')
+data = pd.read_csv('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Literature_Catalogs/All_Exoplanet_MCMC_Flares.csv')
+data2 = pd.read_csv("C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Literature_Catalogs/All_TOI_MCMC_Flares.csv")
+data3 = pd.read_csv('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Literature_Catalogs/Gunther_2020.csv')
+data4 = pd.read_csv('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Literature_Catalogs/Illin_2024.csv')
+data5 = pd.read_csv('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Literature_Catalogs/Pietras_2020.csv')
 
-amp = np.array(data['Amp'])
+amp = np.array(data['Amplitude'])
 amp = amp[~np.isnan(amp)]
-amp2 = np.array(data2['Amp'])
+amp2 = np.array(data2['Amplitude'])
 amp2 = amp2[~np.isnan(amp2)]
 amp3 = np.array(data3['Amp'])
 amp3 = amp3[~np.isnan(amp3)]
@@ -61,7 +61,8 @@ count, bins, ignored = ax[1].hist(FWHM4, bins = 15, range=(0,20), density = True
 
 mu = np.mean(np.log(amp))
 sigma = np.std(np.log(amp))
-x = np.linspace(0, 0.5, 20000)
+print(mu, sigma, ' Whitsett_Exo')
+x = np.linspace(0, 0.05, 20000)
 pdf = (np.exp(-(np.log(x) - mu)**2 / (2 * sigma**2))
         / (x * sigma * np.sqrt(2 * np.pi)))
 ax[0].plot(x, pdf, linewidth=2, c= 'r', label = 'Exoplanet Hosts')
@@ -69,7 +70,8 @@ ax[0].plot(x, pdf, linewidth=2, c= 'r', label = 'Exoplanet Hosts')
 
 mu = np.mean(np.log(amp2))
 sigma = np.std(np.log(amp2))
-x = np.linspace(0, 0.5, 20000)
+print(mu, sigma, ' Whitsett_TOI')
+x = np.linspace(0, 0.05, 20000)
 pdf = (np.exp(-(np.log(x) - mu)**2 / (2 * sigma**2))
         / (x * sigma * np.sqrt(2 * np.pi)))
 ax[0].plot(x, pdf, linewidth=2,c= 'blue', label = 'TOI Hosts')
@@ -77,7 +79,8 @@ ax[0].plot(x, pdf, linewidth=2,c= 'blue', label = 'TOI Hosts')
 
 mu = np.mean(np.log(amp3))
 sigma = np.std(np.log(amp3))
-x = np.linspace(0, 0.5, 20000)
+print(mu, sigma, ' Gunther')
+x = np.linspace(0, 0.05, 20000)
 pdf = (np.exp(-(np.log(x) - mu)**2 / (2 * sigma**2))
         / (x * sigma * np.sqrt(2 * np.pi)))
 ax[0].plot(x, pdf, linewidth=2,  linestyle = ':',c= 'black', label = 'Gunther 2020')
@@ -85,6 +88,7 @@ ax[0].plot(x, pdf, linewidth=2,  linestyle = ':',c= 'black', label = 'Gunther 20
 
 mu = np.mean(np.log(amp4))
 sigma = np.std(np.log(amp4))
+print(mu, sigma, 'Illin')
 x = np.linspace(0, 0.5, 20000)
 pdf = (np.exp(-(np.log(x) - mu)**2 / (2 * sigma**2))
         / (x * sigma * np.sqrt(2 * np.pi)))
@@ -93,32 +97,33 @@ ax[0].plot(x, pdf, linewidth=2,  linestyle = ':',c= 'green', label = 'Illin 2024
 
 mu = np.mean(np.log(amp5))
 sigma = np.std(np.log(amp5))
+print(mu, sigma, ' Pietras')
 x = np.linspace(0, 0.5, 20000)
 pdf = (np.exp(-(np.log(x) - mu)**2 / (2 * sigma**2))
         / (x * sigma * np.sqrt(2 * np.pi)))
 ax[0].plot(x, pdf, linewidth=2,  linestyle = ':', c = 'cyan', label = 'Pietras 2022')
 
-# mu = np.mean(np.log(FWHM))
-# sigma = np.std(np.log(FWHM))
-# x = np.linspace(0, 0.5, 20000)
-# pdf = (np.exp(-(np.log(x) - mu)**2 / (2 * sigma**2))
-#         / (x * sigma * np.sqrt(2 * np.pi)))
-# ax[1].plot(x, pdf, linewidth=2, linestyle = '--', c= 'r')
+mu = np.mean(np.log(FWHM))
+sigma = np.std(np.log(FWHM))
+x = np.linspace(0, 0.5, 20000)
+pdf = (np.exp(-(np.log(x) - mu)**2 / (2 * sigma**2))
+        / (x * sigma * np.sqrt(2 * np.pi)))
+ax[1].plot(x, pdf, linewidth=2, linestyle = '--', c= 'r')
 
 
-# mu = np.mean(np.log(FWHM2))
-# sigma = np.std(np.log(FWHM2))
-# x = np.linspace(0, 0.5, 20000)
-# pdf = (np.exp(-(np.log(x) - mu)**2 / (2 * sigma**2))
-#         / (x * sigma * np.sqrt(2 * np.pi)))
-# ax[1].plot(x, pdf, linewidth=2,  linestyle = '--',c= 'cyan')
+mu = np.mean(np.log(FWHM2))
+sigma = np.std(np.log(FWHM2))
+x = np.linspace(0, 0.5, 20000)
+pdf = (np.exp(-(np.log(x) - mu)**2 / (2 * sigma**2))
+        / (x * sigma * np.sqrt(2 * np.pi)))
+ax[1].plot(x, pdf, linewidth=2,  linestyle = '--',c= 'cyan')
 
-# mu = np.mean(np.log(FWHM3))
-# sigma = np.std(np.log(FWHM3))
-# x = np.linspace(0, 0.5, 20000)
-# pdf = (np.exp(-(np.log(x) - mu)**2 / (2 * sigma**2))
-#         / (x * sigma * np.sqrt(2 * np.pi)))
-# ax[1].plot(x, pdf, linewidth=2,  linestyle = '--',c= 'black')
+mu = np.mean(np.log(FWHM3))
+sigma = np.std(np.log(FWHM3))
+x = np.linspace(0, 0.5, 20000)
+pdf = (np.exp(-(np.log(x) - mu)**2 / (2 * sigma**2))
+        / (x * sigma * np.sqrt(2 * np.pi)))
+ax[1].plot(x, pdf, linewidth=2,  linestyle = '--',c= 'black')
 
 
 
