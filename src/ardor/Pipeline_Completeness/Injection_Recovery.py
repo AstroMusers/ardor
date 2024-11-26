@@ -147,7 +147,7 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False, old
                         fast = False
                     t2 = timer.time()
                     tier0_tau.append(t2-t1)
-                    flare_events_T1, lengths = Flare.flare_ID(lc.flux, 3, fast = fast, injection = True, old = True)
+                    flare_events_T1, lengths = Flare.flare_ID(lc.flux, 3, fast = fast, injection = True, old = old)
                     t3 = timer.time()
                     tier1_tau.append(t3-t2)                
                     if len(flare_events_T1) != 0:
@@ -211,8 +211,12 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False, old
                             integral_T2.append(value[5])
                     ZZ = np.stack((amp_list_T1, FWHM_list_T1, error_T1, integral_T1,injected_T1, result_T1))
                     ZZ = np.transpose(ZZ)
-                    output_file_T1 = '/Injection_Recovery_T1.csv'
-                    output_file_T2 = '/Injection_Recovery_T2.csv'
+                    if old == True:
+                        output_file_T1 = '/Injection_Recovery_T1_Old.csv'
+                        output_file_T2 = '/Injection_Recovery_T2_Old.csv'
+                    elif old == False:
+                        output_file_T1 = '/Injection_Recovery_T1.csv'
+                        output_file_T2 = '/Injection_Recovery_T2.csv'
                     with open(output_dir + output_file_T1, "a") as f:
                         np.savetxt(f, ZZ, delimiter=",", fmt='%s')
                         f.close()
@@ -270,7 +274,7 @@ def Injection_Recovery_Grid(data_dir, grid_dir, label = 'T1', energy = False):
                 elif count != 0:
                     tmp.append(pos/count * 100)
             y.append(tmp)
-        with open(grid_dir + '/Injection_Recovery_Grid_' + label + '.csv', 'w', newline='') as f:
+        with open(grid_dir + '/Injection_Recovery_Grid' + label + '.csv', 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerows(y)
     elif energy == True:
@@ -645,10 +649,11 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,ou
         df['y+1'] = y_err1[1]
         df.to_csv(output_dir, index = None)
 
-# Injection_Recovery('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR')
-Injection_Recovery_Grid('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR/Injection_Recovery_T1.csv', 
-                        'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR',
-                        label = 'T1', energy = False)
+# Injection_Recovery('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop', old = True)
+# Injection_Recovery('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop', old = False)
+# Injection_Recovery_Grid('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Injection_Recovery_T1_Old.csv', 
+#                         'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop',
+#                         label = 'T1', energy = False)
 # Precision_Recall('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20])
 # Precision_Recall('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_LC', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20])
 
