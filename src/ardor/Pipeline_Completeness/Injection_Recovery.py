@@ -2,7 +2,7 @@
 """
 Created on Sun Nov 12 09:35:59 2023
 
-@author: Nate Whitsett
+@author: whitsett.n
 """
 
 
@@ -31,6 +31,9 @@ def amp_log_normal():
 def FWHM_uniform():
     return np.random.uniform(0.0005, 0.041)
 
+def find_nearest(array, value):
+    idx = (np.abs(array - value)).argmin()
+    return idx
 
 def Flare_Injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False, detrend = True, rates = True,PR = False, sigma = 3, chi_sq = 1):
     location_list = []
@@ -308,7 +311,7 @@ def Injection_Recovery_Grid(data_dir, grid_dir, label = 'T1', energy = False):
             writer = csv.writer(f)
             writer.writerows(y)
         
-def Precision_Recall(input_dir, output_dir, sigma_list, chi_set, star_type = 'G', rate = False):
+def Precision_Recall(input_dir, output_dir, sigma_list, chi_set, star_type = 'G', rate = False, old = False):
     lc_num = 0
     item_count = 0
     tier0_tau = []
@@ -334,7 +337,7 @@ def Precision_Recall(input_dir, output_dir, sigma_list, chi_set, star_type = 'G'
                         fast = False
                     t2 = timer.time()
                     tier0_tau.append(t2-t1)
-                    flare_events_T1, lengths = Flare.flare_ID(lc.flux, sigma, fast = fast, injection = True)
+                    flare_events_T1, lengths = Flare.flare_ID(lc.flux, sigma, fast = fast, injection = True, old = old)
                     t3 = timer.time()
                     tier1_tau.append(t3-t2)                
                     if len(flare_events_T1) != 0:
@@ -414,8 +417,12 @@ def Precision_Recall(input_dir, output_dir, sigma_list, chi_set, star_type = 'G'
                             chi_sq_T2.append(value[6])
                     ZZ = np.stack((amp_list_T1, FWHM_list_T1, error_T1,injected_T1,result_T1,sigma_T1, chi_sq_T1))
                     ZZ = np.transpose(ZZ)
-                    output_file_T1 = '/Precision_Recall_T1.csv'
-                    output_file_T2 = '/Precision_Recall_T2.csv'
+                    if old == False:
+                        output_file_T1 = '/Precision_Recall_T1.csv'
+                        output_file_T2 = '/Precision_Recall_T2.csv'
+                    elif old == True:
+                        output_file_T1 = '/Precision_Recall_T1_Old.csv'
+                        output_file_T2 = '/Precision_Recall_T2_Old.csv'
                     with open(output_dir + output_file_T1, "a") as f:
                         np.savetxt(f, ZZ, delimiter=",", fmt='%s')
                         f.close()
@@ -426,6 +433,63 @@ def Precision_Recall(input_dir, output_dir, sigma_list, chi_set, star_type = 'G'
                         f.close()
             except:
                 continue
+
+def Tier2_PR_Test(input_dir, output_dir, chi_list, epoch_list):
+    files = os.listdir(input_dir)
+    precision = []
+    recall = []
+    for chi in chi_list:
+        TP = 0
+        FP = 0
+        FN = 0
+        for num, data in enumerate(files):
+            
+            if data.endswith('a_fast-lc.fits') == True:
+                fast = True
+            elif data.endswith('a_fast-lc.fits') == False:  
+                fast = False
+            lc = Flare.tier0(input_dir + '/' + data)
+            new_epochs = []
+            for epochs in epoch_list:
+                if epochs > np.min(lc.time) and epochs < np.max(lc.time):
+                    new_epochs.append(epochs)
+            test_flare_list_T2 = dict()
+            for epochs in new_epochs:
+                test_flare_list_T2[epochs] = (1, 0, 2.5, chi)
+            flares, lengths = Flare.tier1(lc.detrended_flux, 2.5, fast = fast)
+            flare_events_T2 = Flare.tier2(lc.time, lc.detrended_flux, lc.error, flares, lengths, chi_square_cutoff = chi, host_name = 'My_Host', csv = False, Sim = False, injection= True)
+            remove_list = []
+            for index, events in enumerate(flare_events_T2):
+                for epochs in new_epochs:
+                    if np.abs(lc.time[events]-epochs) < 0.01:
+                        test_flare_list_T2[epochs] = (1, 1, 2.5, chi)
+                        remove_list.append(index)
+                        break
+            non_library_list = [i for j, i in enumerate(flare_events_T2) if j not in remove_list]
+            for index in non_library_list:
+                test_flare_list_T2[lc.time[index]] = (0, 1, 2.5, chi)
+            for keys in test_flare_list_T2.keys():
+                flare = test_flare_list_T2[keys]
+                if flare[0] == 1 and flare[1] == 1:
+                    TP += 1
+                if flare[0] == 0 and flare[1] == 1:
+                    FP += 1
+                if flare[0] == 1 and flare[1] == 0:
+                    FN += 1
+            print(len(test_flare_list_T2))
+        print(TP, FP, FN, chi)
+        precision.append(TP/(TP+FP))
+        recall.append(TP/(FN+TP))
+        print(precision, recall)
+        Z = np.stack((precision, recall))
+        Z = np.transpose(Z)
+        with open(output_dir, "a") as f:
+            np.savetxt(f, Z, delimiter=",", fmt='%s')
+            f.close() 
+        precision = []
+        recall = []
+    
+
 
 def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,output_dir, tier = 'T1'):
     data_T1 = pd.read_csv(PR_T1_dir, index_col=None, header=None)
@@ -544,7 +608,7 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,ou
         # plt.xlim(0, 1.1)
         # x = x/np.max(x)
         # x1 = x1/np.max(x1)
-        # plt.savefig('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Grad School/Fall 2023/Research/Injection Tests/Precision_Recall/Precision_Recall_Curve.png', dpi=600, bbox_inches="tight")
+        # plt.savefig('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Grad School/Fall 2023/Research/Injection Tests/Precision_Recall/Precision_Recall_Curve.png', dpi=600, bbox_inches="tight")
         plt.show()
     elif tier == 'T2':
         counts = 0
@@ -649,12 +713,12 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,ou
         df['y+1'] = y_err1[1]
         df.to_csv(output_dir, index = None)
 
-# Injection_Recovery('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop', old = True)
-# Injection_Recovery('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop', old = False)
-# Injection_Recovery_Grid('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Injection_Recovery_T1_Old.csv', 
-#                         'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop',
+# Injection_Recovery('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop', old = True)
+# Injection_Recovery('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop', old = False)
+# Injection_Recovery_Grid('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Injection_Recovery_T1_Old.csv', 
+#                         'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop',
 #                         label = 'T1', energy = False)
-# Precision_Recall('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20])
-# Precision_Recall('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_LC', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20])
+# Precision_Recall('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20], old = True)
+# Precision_Recall('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_LC', 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20], old = True)
 
-# Precision_Recall_Data_Processing('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR/Precision_Recall_T1.csv', 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR/Precision_Recall_T1.csv', [2, 2.5, 3, 3.5, 4, 4.5, 5], chi_set=[1, 2, 5, 7.5, 10, 15, 20], tier = 'T1')
+# Precision_Recall_Data_Processing('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR/Precision_Recall_T1_Old.csv','C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR/Precision_Recall_T2_Old.csv', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20], 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR/Precision_Recall_T1_Old.csv', tier = 'T1')

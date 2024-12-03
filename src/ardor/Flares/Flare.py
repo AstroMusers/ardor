@@ -22,7 +22,7 @@ import collections as c
 from matplotlib import pyplot as plt
 # import allesfitter
 
-def linear(x, a, b, c):
+def linear(x, a, b):
     '''
     
 
@@ -34,8 +34,6 @@ def linear(x, a, b, c):
         multiplicative parameter of the exponential decay function
     b : float
         time constant parameter of the exponential decay function
-    c : float
-        Time-offset for the exponential decay function
 
     Returns
     -------
@@ -43,7 +41,7 @@ def linear(x, a, b, c):
         Gives exponential decay model output with the given parameters
 
     '''
-    return np.log(a) + b*x 
+    return a*x - b
 def exp_decay(x, a, b, c):
     '''
     
@@ -106,41 +104,37 @@ def TESS_FITS_csv(input_file, csv_directory, csv_name=None):
     grand_list = pd.DataFrame({'time': time, 'pdcsap_flux': data, 'error': error})
     return grand_list.to_csv(directory, index=False)
 
-def TESS_data_extract(fits_lc_file, SAP_ERR=False, PDCSAP_ERR=False):
+def TESS_data_extract(fits_lc_file, PDCSAP_ERR=False):
     '''
 
     Parameters
     ----------
     fits_lc_file : string
         Directory of the TESS light curve fits file
-    SAP_ERR : bool, optional
-        True will return SAP_FLUX error. The default is False.
     PDCSAP_ERR : bool, optional
         True will return PDCSAP_FLUX error. The default is False.
 
     Returns
     -------
-    ND np.array
-        Returns an Nd array of the time, PDCSAP_FLUX, SAP_FLUX, and/or the
-        SAP_FLUX and PDCSAP_FLUX error. Min 3D array, max 5D array.
+    lc : named tuple
+        Returns named tuple that has attributes flux, time, and error.
 
     '''
     hdul = fits.open(fits_lc_file)
     time = hdul[1].data['TIME']
-    sap_flux = hdul[1].data['SAP_FLUX']
-    sap_flux_error = hdul[1].data['SAP_FLUX_ERR']
     pdcsap_flux = hdul[1].data['PDCSAP_FLUX']
     pdcsap_flux_error = hdul[1].data['PDCSAP_FLUX_ERR']
     time, pdcsap_flux, pdcsap_flux_error = delete_nans(time, pdcsap_flux, pdcsap_flux_error)
-    #pdcsap_flux_method = hdul[1].header['PDCMETHD']
-    if SAP_ERR == False and PDCSAP_ERR == False:
-        return time, pdcsap_flux/np.median(pdcsap_flux)
-    if SAP_ERR == False and PDCSAP_ERR == True:
-        return time, pdcsap_flux/np.median(pdcsap_flux), pdcsap_flux_error/np.median(pdcsap_flux)
-    if SAP_ERR == True and PDCSAP_ERR == False:
-        return time, sap_flux, sap_flux_error, pdcsap_flux
-    if SAP_ERR == True and PDCSAP_ERR == True:
-        return time, sap_flux, pdcsap_flux/np.median(pdcsap_flux), sap_flux_error, pdcsap_flux
+    flux = pdcsap_flux/np.median(pdcsap_flux)
+    error = pdcsap_flux_error/np.median(pdcsap_flux)
+    if PDCSAP_ERR == False:
+        LightCurve = c.namedtuple('LightCurve', ['time', 'flux'])
+        lc = LightCurve(time, flux)
+        return lc
+    if  PDCSAP_ERR == True:
+        LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'error'])
+        lc = LightCurve(time, flux, error)
+        return lc
 
 
 def phase_folder(time, period, epoch):
@@ -212,7 +206,7 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
     flare_length_list = []
     flare = False
     begin = 0
-    end = 1000
+    end = 100
     shift = 0
     peak_index = 0
     sig = sigma*mask_data[begin:end].std()
@@ -220,13 +214,13 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
     if injection == True:
         delay = 50
     else:
-        delay = 10
+        delay = 1
     if fast == False:
         for index, flux in enumerate(data):
             try:
-                if shift == 1000:
-                    begin += 1000
-                    end += 1000
+                if shift == 100:
+                    begin += 100
+                    end += 100
                     sig = sigma*mask_data[begin:end].std()
                     mu = np.ma.mean(mask_data[begin:end])
                     shift = 0
@@ -283,9 +277,9 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
     elif fast == True:
         for index, flux in enumerate(data):
             try:
-                if shift == 1000:
-                    begin += 1000
-                    end += 1000
+                if shift == 100:
+                    begin += 100
+                    end += 100
                     sig = sigma*mask_data[begin:end].std()
                     mu = np.ma.mean(mask_data[begin:end])
                     shift = 0
@@ -626,33 +620,44 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
         r_sq = 0
         try:
             if lengths[index] >= 15:
-                popt, pcov = curve_fit(exp_decay, new_time[events:events+15],new_data[events:events+15], maxfev=5000, sigma = new_error[events:events+15], absolute_sigma=True)
-                squares = ((new_data[events:events+15] - exp_decay(new_time[events:events+15], *popt))/((new_error[events:events+15])))**2
+                log_data = (np.log(new_data[events:events+15] - np.min(new_data[events:events+15])*0.999))
+                log_error = np.sqrt(new_error[events:events+15]**2+ new_error[15]**2)/(new_data[events:events+15] - np.min(new_data[events:events+15])*0.999)
+                popt, pcov = curve_fit(linear, new_time[events:events+15],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
+                squares = (((log_data - linear(new_time[events:events+15], *popt))/(log_error)))**2
                 chi_squared = np.sum(squares)/13
                 x = linregress(new_time[events:events+10], (np.log(new_data[events:events+10] - new_data[events+10])))
                 r_sq = x.rvalue**2
             elif lengths[index] > 5 and lengths[index] < 15:
-                popt, pcov = curve_fit(exp_decay, new_time[events:events+10], new_data[events:events+10], maxfev=5000, sigma = new_error[events:events+10], absolute_sigma=True)
-                squares = ((new_data[events:events+10] - exp_decay(new_time[events:events+10], *popt))/(new_error[events:events+10]))**2
+                log_data = (np.log(new_data[events:events+10] - np.min(new_data[events:events+10])*0.999))
+                log_error = np.sqrt(new_error[events:events+10]**2+ new_error[10]**2)/(new_data[events:events+10] - np.min(new_data[events:events+10])*0.999)
+                popt, pcov = curve_fit(linear, new_time[events:events+10],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
+                squares = (((log_data - linear(new_time[events:events+10], *popt))/(log_error)))**2
                 chi_squared = np.sum(squares)/8
                 x = linregress(new_time[events:events+10], (np.log(new_data[events:events+10] - new_data[events+10])))
                 r_sq = x.rvalue**2
             elif lengths[index] == 5:
-                popt, pcov = curve_fit(exp_decay, new_time[events:events+5], new_data[events:events+5], maxfev=5000, sigma = new_error[events:events+5], absolute_sigma=True)
-                squares = ((new_data[events:events+5] - exp_decay(new_time[events:events+5], *popt))/(new_error[events:events+5]))**2
+                log_data = (np.log(new_data[events:events+5] - np.min(new_data[events:events+5])*0.999))
+                log_error = np.sqrt(new_error[events:events+5]**2+ new_error[5]**2)/(new_data[events:events+5] - np.min(new_data[events:events+5])*0.999)
+                popt, pcov = curve_fit(linear, new_time[events:events+5],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
+                squares = (((log_data - linear(new_time[events:events+5], *popt))/(log_error)))**2
                 chi_squared = np.sum(squares)/(3)
             elif lengths[index] == 4:
-                popt, pcov = curve_fit(exp_decay, new_time[events:events+4], new_data[events:events+4], maxfev=5000, sigma = new_error[events:events+4], absolute_sigma=True)
-                squares = ((new_data[events:events+4] - exp_decay(new_time[events:events+4], *popt))/(new_error[events:events+4]))**2
+                log_data = (np.log(new_data[events:events+4] - np.min(new_data[events:events+4])*0.999))
+                log_error = np.sqrt(new_error[events:events+4]**2+ new_error[4]**2)/(new_data[events:events+4] - np.min(new_data[events:events+4])*0.999)
+                popt, pcov = curve_fit(linear, new_time[events:events+4],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
+                squares = (((log_data - linear(new_time[events:events+4], *popt))/(log_error)))**2
                 chi_squared = np.sum(squares)/(2)
             elif lengths[index] == 3:
-                popt, pcov = curve_fit(exp_decay, new_time[events:events+3], new_data[events:events+3], maxfev=5000, sigma = new_error[events:events+3], absolute_sigma=True)
-                squares = ((new_data[events:events+3] - exp_decay(new_time[events:events+3], *popt))/(new_error[events:events+3]))**2
+                log_data = (np.log(new_data[events:events+3] - np.min(new_data[events:events+3])*0.999))
+                log_error = np.sqrt(new_error[events:events+3]**2+ new_error[3]**2)/(new_data[events:events+3] - np.min(new_data[events:events+3])*0.999)
+                popt, pcov = curve_fit(linear, new_time[events:events+3],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
+                squares = (((log_data - linear(new_time[events:events+3], *popt))/(log_error)))**2
                 chi_squared = np.sum(squares)/(1)
         except:
             print('Flare ID Error')
+            continue
             chi_squared = 100
-        if (chi_squared < chi_square_cutoff and popt[0] > 0 and popt[1] > 0) or r_sq > 0.8:
+        if (chi_squared < chi_square_cutoff and popt[0] < 0) or r_sq > 0.8:
             event_list.append(flare_events)
             flare_count += 1
             if Sim == True:
