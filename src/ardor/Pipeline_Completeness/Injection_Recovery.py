@@ -40,9 +40,9 @@ def Flare_Injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False
     ## Approximate flare rate per 2 minute cadence of flaring M/F stars (~0.5 flares/day)
     if flare_type == 'Flaring':
         if sp_type == 'M':
-            rate = 2.8e-4
+            rate = 7e-5
         if sp_type == 'F':
-            rate = 6e-05
+            rate = 5e-04
         if sp_type == 'G':
             rate = 5e-5
         if sp_type == 'K':
@@ -72,10 +72,6 @@ def Flare_Injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False
             if flare_rate >= flare_check:
                 location = interval
                 counter = 0 
-                for locations in location_list:
-                    while location > locations - 800 and location < locations + 800 and counter < 10000:
-                        location = np.random.randint(50, len(data)-50)
-                        counter += 1
                 sample_baseline = data[location-300:location+300]
                 baseline_error = np.std(sample_baseline)
                 if np.isnan(baseline_error) == True:
@@ -83,9 +79,9 @@ def Flare_Injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False
                 normalized_sample = sample_baseline
                 FWHM = FWHM_uniform()
                 amp = amp_log_normal()
-                flare_inject = af.aflare1(time[location-1000:location+1000], time[location], FWHM, amp)
+                flare_inject = af.aflare1(time[location-300:location+300], time[location], FWHM, amp)
                 normalized_sample_inject = normalized_sample + flare_inject
-                data[location-1000:location+1000] = normalized_sample_inject
+                data[location-300:location+300] = normalized_sample_inject
                 location_list.append(location)
                 flares += 1
                 integral = simpson(af.aflare1(time, time[location], FWHM, amp), x=time)
@@ -122,6 +118,7 @@ def Flare_Injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False
     LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'error'])
     lc = LightCurve(time, data, error)
     return lc, flare_inject_dict_T1, flare_inject_dict_T2
+
 
 
 def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False, old = False):

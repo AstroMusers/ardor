@@ -39,7 +39,7 @@ from scipy.integrate import simpson
 ##a 1/4 power law with respect to eta, which is scaled to the Sun's Alfven
 ##surface of 18.8 solar radii. The Alfven surface is given in AU.
 class Star:
-    def __init__(self, mass, dist, lumin, radius=None, age=None, p_rot=np.nan, B=None, err = False, alfven = None):
+    def __init__(self, mass, dist, lumin, radius=None, age=None, p_rot=None, B=None, err = False, alfven = None):
         """
         The `Star` class initializes with basic physical parameters found on, e.g., the Exoplanet Archive
         and generates the predicted polar magnetic field strength as well as the median Alfven surface
@@ -77,8 +77,6 @@ class Star:
         Star class object.
 
         """
-        if np.isnan(p_rot) == True:
-            p_rot = None
         if err == False:
             self.mass = mass
             self.stlumin = 10**(lumin)
@@ -93,25 +91,25 @@ class Star:
             self.windspeed = np.sqrt(6.67e-8*self.mass*1.989e33/self.radius)
             self.brightness = self.lumin/(4*np.pi*(self.dist)**2)
             ##Uncertainty of 0.5
-            self.massloss = (10**8.33)/(self.age**2.33)
+            if self.age == None:
+                self.massloss = (10**8.33)/(4.5e9**2.33)
+            elif self.age != None:
+                self.massloss = (10**8.33)/(self.age**2.33)
             if B != None:
                 self.B = B
-            if age == None and B == None:
-                ##Error of 0.07
+            if age == None and B == None and p_rot != None:
                 self.B = 10**1.98/(p_rot**(1.32))
-            if p_rot == None and B == None:
-                ##Error of 0.0225
+            if p_rot == None and B == None and self.age != None:
                 self.B = 10**6.63/(self.age**0.655)
-            if p_rot == None and age == None and B == None:
-                return 'Input age, rotational period, or B field'
             elif age != None and p_rot != None and B == None:
-                ##Error 0.655
                 self.B = (10**1.98/(0.25*p_rot**1.32)+ 0.75*10**6.63/(age**0.655))
-            self.eta = ((self.B)**2 * (self.radius)**2)/((self.windspeed)*(self.massloss*6.306*10**25))
-            if alfven == None:
-                self.Alfven = self.radius*6.68459e-14*(0.3+(self.eta+0.25)**(1/4))*2.1
-            else:
+            
+            if B != None and self.windspeed != None and self.massloss != None:
+                self.eta = ((self.B)**2 * (self.radius)**2)/((self.windspeed)*(self.massloss*6.306*10**25))
+            if alfven != None:
                 self.Alfven = alfven
+            else:
+                self.Alfven = self.radius*6.68459e-14*(0.3+(self.eta+0.25)**(1/4))*2.1
         elif err == True:
             self.mass = mass
             self.stlumin = 10**(lumin)
@@ -126,7 +124,10 @@ class Star:
             self.windspeed = np.sqrt(6.67e-8*self.mass*1.989e33/self.radius)
             self.brightness = self.lumin/(4*np.pi*(self.dist)**2)
             ##Uncertainty of 0.5
-            self.massloss = (10**8.33)/(self.age**np.random.normal(loc = 2.33, scale = 0.55))
+            if self.age == None:
+                self.massloss = (10**8.33)/(4.5e9**2.33)
+            elif self.age != None:
+                self.massloss = (10**8.33)/(self.age**2.33)
             if B != None:
                 self.B = B
             if age == None and B == None:
@@ -155,7 +156,7 @@ class Star:
 ##The radius is given in Jupiter radii, the semi-major axis in AU, and the
 ##magnetic field strength in Gauss. The phase related parameters are in radians.
 class Planet:
-    def __init__(self, radius, period, a, e, B, arg_periastron=0, orbit_resolution=0.01,inclination=90, Star = None):
+    def __init__(self, radius, period, a, e, B, arg_periastron=0, orbit_length=7000,inclination=90, star = None, compute_period = True):
         '''
         The `Planet` class initializes with basic physical parameters found on, e.g., the Exoplanet Archive
         and generates the orbital geometry of a system, including orbital distances as a function of time 
@@ -186,12 +187,17 @@ class Planet:
         Planet class
 
         '''
-        self.period = period
+        if star == None:
+            star = Star(1, 1, 1, B = 1)
+        if (star != None and compute_period == True):
+            self.period = np.sqrt((4*np.pi**2*(a*1.496e11)**3)/(6.67*10**(-11)*star.mass*1.989e30))/(24*60*60)
+        elif period != None:
+            self.period = period
         self.radius = radius*7.149e9
         self.e = e
         self.a = a
         self.B = B
-        self.orbit_resolution = orbit_resolution
+        self.orbit_length = orbit_length
         self.arg_periastron = arg_periastron*0.0174533
         if arg_periastron > 90:
             self.true_anomaly = np.pi*2 + np.pi/2 - arg_periastron*0.0174533
@@ -200,15 +206,15 @@ class Planet:
         self.inclination = inclination*0.0174533
         self.periastron = None
         self.periastron_time = None
-        self.time, self.position = orbit_pos_v_time(self.period, self.e, self.a, orbit_resolution = orbit_resolution, phase=False, arg_periastron=arg_periastron)
+        self.time, self.position = orbit_pos_v_time(self.period, self.e, self.a, orbit_length = self.orbit_length, phase=False, arg_periastron=arg_periastron)
         self.phase = (self.time/self.period)*np.pi*2
         self.orbit = a*(1-e**2)/(1+e*np.cos(self.phase))
         self.magnetosphere = []
         if Star != None:
             for dist in self.position:
-                self.magnetosphere.append(2*(2*1.16)**(1/3)*(self.B/(Star.B*(3.4*Star.radius/(dist*1.496e+13))**2))*(self.radius/7.149e9))
-        self.magnetosphere = np.array(self.magnetosphere)
-        self.v = np.sqrt(6.67e-8*Star.mass*1.989e+33*(2/(self.position*1.496e+13)-1/(self.a*1.496e+13)))/(1e5)
+                self.magnetosphere.append(2*(2*1.16)**(1/3)*(self.B/(star.B*(3.4*star.radius/(dist*1.496e+13))**2))*(self.radius/7.149e9))
+            self.v = np.sqrt(6.67e-8*star.mass*1.989e+33*(2/(self.position*1.496e+13)-1/(self.a*1.496e+13)))/(1e5)
+            self.magnetosphere = np.array(self.magnetosphere)
         
 
         
@@ -259,14 +265,14 @@ def M_prime(e,E):
 
 def M_newton(e,M):
     E = M
-    for steps in range(1000):
+    for steps in range(100):
         E = E - M_func(e,E,M)/M_prime(e,E)
     return E
 
 def SPI_Metric(distance, B_star, B_planet=10):
     return np.log10(B_star*B_planet/distance**3)
 
-def orbit_pos_v_time(period, e, a, orbit_resolution = 0.1, phase=False, arg_periastron = 0):
+def orbit_pos_v_time(period, e, a, orbit_length = 10, phase=False, arg_periastron = 0):
     time = 0
     time_list = []
     position = []
@@ -275,7 +281,7 @@ def orbit_pos_v_time(period, e, a, orbit_resolution = 0.1, phase=False, arg_peri
         M = n*time
         E = M_newton(e, M)
         dist = a*(1-e*np.cos(E))
-        time += orbit_resolution
+        time += 1/orbit_length
         time_list.append(time)
         position.append(dist)
     if phase == True:
@@ -373,7 +379,7 @@ def phase_curve(star, planet, interaction=None, linear_parameter=0.1):
     else:
         return curve, periastron_index+1
 
-def probability_density(star, planet, periastron_index):
+def probability_density(star, planet, periastron_index, length = 10):
     probability_density = []
     bool_list = []
     for distance in planet.position:
@@ -383,6 +389,7 @@ def probability_density(star, planet, periastron_index):
             bool_list.append(1)
         probability = 1/(distance)**3
         probability_density.append(probability)
+    percent = np.sum(bool_list)/len(bool_list)
     bool_list = np.array(bool_list)
     phase = planet.time/planet.period
     planet.periastron = periastron_index
@@ -397,8 +404,8 @@ def probability_density(star, planet, periastron_index):
         probability_dist = np.ones(len(probability_dist))
     integral = simpson(probability_dist, x= phase)
     probability_dist = probability_dist/integral
-    probability_dist = (probability_dist*(planet.B/star.B) + uniform)/simpson(probability_dist*(planet.B/star.B) + uniform, x= phase)
-    return phase, probability_dist
+    probability_dist = (probability_dist*(planet.B/star.B)*percent + uniform)/simpson(probability_dist*(planet.B/star.B)*percent+ uniform, x= phase)
+    return probability_dist, planet.phase/(2*np.pi)
 
 
 def interaction_checker(star, planet):
@@ -446,5 +453,4 @@ def plot_orbit_flares(star, planet, flare_phase_list, fig, ax, alfven_radius = F
           bbox_to_anchor=(.4 + np.cos(angle)/2, .4 + np.sin(angle)/2), prop={'size': 16})
     plt.setp(L.texts, family='serif')
     ax.set_ylim([0,max(position)*1.1/(star.Alfven)])
-
 

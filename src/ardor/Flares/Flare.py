@@ -96,13 +96,14 @@ def TESS_FITS_csv(input_file, csv_directory, csv_name=None):
     time = hdul[1].data['TIME']
     data = hdul[1].data['PDCSAP_FLUX']
     error = hdul[1].data['PDCSAP_FLUX_ERR']
-    
     time, data, error = delete_nans(time, data, error)
-
+    error = error/np.median(data)
+    data = data/np.median(data)
+    edata, trend = lk_detrend(data, time, return_trend=True)
     
-    grand_list = pd.DataFrame({'time': time, 'pdcsap_flux': data, 'error': error})
-    grand_list = pd.DataFrame({'time': time, 'pdcsap_flux': data, 'error': error})
-    return grand_list.to_csv(directory, index=False)
+    grand_list = pd.DataFrame({'time': time, 'Normalized_Flux': data, 'error': error, 'trend': trend.flux})
+    grand_list = pd.DataFrame({'time': time, 'Normalized_Flux': data, 'error': error, 'trend': trend.flux})
+    grand_list.to_csv(directory, index=False)
 
 def TESS_data_extract(fits_lc_file, PDCSAP_ERR=False):
     '''
@@ -183,21 +184,21 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
     '''
     mask_data = np.ma.masked_array(copy.deepcopy(data), mask=np.zeros(len(data)))
     begin = 0
-    end = 1000
+    end = 100
     shift = 0
     for index, values in enumerate(mask_data):
-        if index < 1000:
-            sigma2 = np.std(mask_data[0:1000])
-            median = np.median(mask_data[0:1000])
-        if index > (len(mask_data) - 1000):
-            sigma2 = np.std(mask_data[len(mask_data)-1000:])
-            median = np.median(mask_data[len(mask_data)-1000:])       
-        elif shift == 1000:
+        if index < 100:
+            sigma2 = np.std(mask_data[0:100])
+            median = np.median(mask_data[0:100])
+        if index > (len(mask_data) - 100):
+            sigma2 = np.std(mask_data[len(mask_data)-100:])
+            median = np.median(mask_data[len(mask_data)-100:])       
+        elif shift == 100:
             sigma2 = np.std(mask_data[begin:end])
             median = np.median(mask_data[begin:end])
             shift = 0
-            begin += 1000
-            end += 1000
+            begin += 100
+            end += 100
         if mask_data[index] > (sigma*sigma2 + median):
             mask_data.mask[index] = True
         shift += 1
@@ -212,9 +213,9 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
     sig = sigma*mask_data[begin:end].std()
     mu = np.ma.mean(mask_data[begin:end])
     if injection == True:
-        delay = 50
+        delay = 10
     else:
-        delay = 1
+        delay = 0
     if fast == False:
         for index, flux in enumerate(data):
             try:
@@ -289,17 +290,16 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
                     peak_index = index
                 if flare == True and data[index+1] > (mu + sig/2):
                     flare_length += 1
-                elif flare == True and data[index+1] < (mu + sig/2) and flare_length < 8:
+                elif flare == True and data[index+1] < (mu + sig/2) and flare_length < 3:
                     flare = False
                     flare_length = 0
-                elif flare == True and data[index+1] < (mu + sig/2) and flare_length >= 8:
+                elif flare == True and data[index+1] < (mu + sig/2) and flare_length >= 3:
                     flare = False
                     peak_correction = np.argmax(data[peak_index:peak_index+flare_length])
                     if len(flare_indices) > 0:
-                        if (flare_indices[-1] + flare_length_list[-1] + delay) > peak_index:
-                            print(flare_indices[-1], flare_length_list[-1], peak_index + peak_correction)
+                        if (flare_indices[-1]  + delay) > peak_index:
                             continue
-                        elif (flare_indices[-1] + flare_length_list[-1] + delay) <= peak_index:
+                        elif (flare_indices[-1]  + delay) <= peak_index:
                             flare_indices.append(peak_index+peak_correction)
                             flare_length_list.append(flare_length)
                     if len(flare_indices) == 0:
@@ -506,7 +506,7 @@ def tier0(TESS_fits_file, scale = 401, injection = False):
     return lc
 
 
-def tier1(detrend_flux, sigma, fast=False):
+def tier1(detrend_flux, sigma, fast=False, injection = False):
     '''
     
 
@@ -530,7 +530,7 @@ def tier1(detrend_flux, sigma, fast=False):
             Used in tier 2.
 
     '''
-    flares, lengths = flare_ID(detrend_flux, sigma, fast=fast)
+    flares, lengths = flare_ID(detrend_flux, sigma, fast=fast, injection = injection)
     Flare = c.namedtuple('Flares', ['index', 'length'])
     flare = Flare(flares, lengths)
     return flare
@@ -538,7 +538,7 @@ def tier1(detrend_flux, sigma, fast=False):
 def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
           output_dir = 'Output.csv', host_name = 'My_Host', T = 4000, 
           host_radius = 1, csv = True, planet_period = 5, planet_epoch = 1000, 
-          Sim = False, injection = False, const = 0, obs_time=0, extract_window = 50):
+          Sim = False, injection = False, const = 0, obs_time=0, extract_window = 50, catalog_name = 'All_Flare_Parameters.csv'):
     '''
     
     Parameters
@@ -575,6 +575,7 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
     TOI_ID_list = []
     flare_number = []
     peak_time = []
+    peak_time_BJD = []
     amplitude = []
     time_scale = []
     Teff = []
@@ -620,35 +621,35 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
         r_sq = 0
         try:
             if lengths[index] >= 15:
-                log_data = (np.log(new_data[events:events+15] - np.min(new_data[events:events+15])*0.999))
+                log_data = (np.log(new_data[events:events+15] - np.min(new_data[events:events+15])*0.998))
                 log_error = np.sqrt(new_error[events:events+15]**2+ new_error[15]**2)/(new_data[events:events+15] - np.min(new_data[events:events+15])*0.999)
                 popt, pcov = curve_fit(linear, new_time[events:events+15],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
                 squares = (((log_data - linear(new_time[events:events+15], *popt))/(log_error)))**2
                 chi_squared = np.sum(squares)/13
-                x = linregress(new_time[events:events+10], (np.log(new_data[events:events+10] - new_data[events+10])))
+                x = linregress(new_time[events:events+10], log_data[0:10])
                 r_sq = x.rvalue**2
             elif lengths[index] > 5 and lengths[index] < 15:
-                log_data = (np.log(new_data[events:events+10] - np.min(new_data[events:events+10])*0.999))
+                log_data = (np.log(new_data[events:events+10] - np.min(new_data[events:events+10])*0.998))
                 log_error = np.sqrt(new_error[events:events+10]**2+ new_error[10]**2)/(new_data[events:events+10] - np.min(new_data[events:events+10])*0.999)
                 popt, pcov = curve_fit(linear, new_time[events:events+10],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
                 squares = (((log_data - linear(new_time[events:events+10], *popt))/(log_error)))**2
                 chi_squared = np.sum(squares)/8
-                x = linregress(new_time[events:events+10], (np.log(new_data[events:events+10] - new_data[events+10])))
+                x = linregress(new_time[events:events+10], log_data[0:10])
                 r_sq = x.rvalue**2
             elif lengths[index] == 5:
-                log_data = (np.log(new_data[events:events+5] - np.min(new_data[events:events+5])*0.999))
+                log_data = (np.log(new_data[events:events+5] - np.min(new_data[events:events+5])*0.998))
                 log_error = np.sqrt(new_error[events:events+5]**2+ new_error[5]**2)/(new_data[events:events+5] - np.min(new_data[events:events+5])*0.999)
                 popt, pcov = curve_fit(linear, new_time[events:events+5],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
                 squares = (((log_data - linear(new_time[events:events+5], *popt))/(log_error)))**2
                 chi_squared = np.sum(squares)/(3)
             elif lengths[index] == 4:
-                log_data = (np.log(new_data[events:events+4] - np.min(new_data[events:events+4])*0.999))
+                log_data = (np.log(new_data[events:events+4] - np.min(new_data[events:events+4])*0.998))
                 log_error = np.sqrt(new_error[events:events+4]**2+ new_error[4]**2)/(new_data[events:events+4] - np.min(new_data[events:events+4])*0.999)
                 popt, pcov = curve_fit(linear, new_time[events:events+4],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
                 squares = (((log_data - linear(new_time[events:events+4], *popt))/(log_error)))**2
                 chi_squared = np.sum(squares)/(2)
             elif lengths[index] == 3:
-                log_data = (np.log(new_data[events:events+3] - np.min(new_data[events:events+3])*0.999))
+                log_data = (np.log(new_data[events:events+3] - np.min(new_data[events:events+3])*0.998))
                 log_error = np.sqrt(new_error[events:events+3]**2+ new_error[3]**2)/(new_data[events:events+3] - np.min(new_data[events:events+3])*0.999)
                 popt, pcov = curve_fit(linear, new_time[events:events+3],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
                 squares = (((log_data - linear(new_time[events:events+3], *popt))/(log_error)))**2
@@ -662,18 +663,19 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
             flare_count += 1
             if Sim == True:
                 param_list.append(param)
-            time_scale.append(popt[1])
-            flare_time_scale.append(popt[1])
-            amplitude.append(popt[0])
-            flare_amplitude.append(popt[0])
+            time_scale.append(np.log(np.abs(popt[0])))
+            flare_time_scale.append(np.log(np.abs(popt[0])))
+            amplitude.append(np.log(popt[1]))
+            flare_amplitude.append(np.log(np.abs(popt[1])))
             peak_time.append(norm_time)
+            peak_time_BJD.append(norm_time + 2457000)
             TOI_ID_list.append(host_name)
             flare_number.append(flare_count)
             chi_square_list.append(chi_squared)
             Teff.append(T)
             radius.append(host_radius)
             obs_time_list.append(obs_time)
-            phase_list.append(((time[flare_events] - (planet_epoch+planet_period/2)) % planet_period)/planet_period)
+            phase_list.append((((time[flare_events] +2457000) - (planet_epoch+planet_period/2)) % planet_period)/planet_period)
             try:
                 X = np.column_stack((new_time, new_data, new_error))
             except:
@@ -686,17 +688,18 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
         
         else:
             continue
+    if output_dir != None:
+        os.makedirs(output_dir, exist_ok=True)
+        if len(TOI_ID_list) > 0:
+            ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, peak_time_BJD, amplitude, time_scale, Teff, radius, phase_list, obs_time_list, chi_square_list))
+            with open(output_dir + '/' + catalog_name, "a") as f:
+                np.savetxt(f, ZZ, delimiter=",", fmt='%s')
+                f.close()
     if Sim == False and injection == False:
         ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, amplitude, time_scale, Teff, radius, phase_list,obs_time_list, chi_square_list))
         return ZZ, flare_count
     if Sim == True:
         ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, phase_list,obs_time_list, chi_square_list))
-        return ZZ
-    if csv == True:
-        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius,phase_list, obs_time_list, chi_square_list))
-        with open(output_dir + '/' + str(host_name) + '/All_Flare_Parameters.csv', "a") as f:
-            np.savetxt(f, ZZ, delimiter=",", fmt='%s')
-            f.close()
         return ZZ
     if injection == True and Sim == False:
         return event_list

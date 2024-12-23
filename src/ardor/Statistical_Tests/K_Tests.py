@@ -25,13 +25,14 @@ num = str(0.5)
 # target_dir = 'M_Flaring_SPI_' + num + '.csv'
 
 
-
-TOI_flares = pd.read_csv('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_Exoplanet_MCMC_Flares.csv')
+# for files in os.listdir('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Simulations/G_Type_Inverse_Cubic'):
+TOI_flares = pd.read_csv('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_Exoplanet_MCMC_Flares.csv')
 KS_Sample_list = []
 AD_Sample_list = []
-N = 500
+N = 200
 
-interest_hosts = [['Host_ID', 'p_KU', 'p_KS', 'p_AD', 'p_KS_Samp', 'p_AD_Samp', 'N', 'dlog(Z)']]
+interest_hosts = [['Host_ID', 'p_KU', 'p_KS', 'p_AD', 'p_KS_Samp', 'p_AD_Samp', 'N', 'dlog(Z)', 'Periastron?', 'Obs_Time', 'Period', 'Close_Approach']]
+# interest_hosts = [['p_KU', 'p_KS', 'p_AD', 'p_KS_Samp', 'p_AD_Samp', 'N']]
 All_CDF = []
 All_CDFx = []
 All_Energy = []
@@ -43,7 +44,7 @@ host_list = []
 df = pd.DataFrame()
 for index, hosts in enumerate(set_hosts):
     name = str(hosts).replace(' ', '')
-    # planet_period = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Period'])[0]
+    planet_period = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Period'])[0]
     phases = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Transit_Phase'], dtype=float)
     phases1 = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Transit_Phase'], dtype=float)
     # obs_time = 700300
@@ -55,7 +56,7 @@ for index, hosts in enumerate(set_hosts):
     dlogz = np.median(np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'log(Z)']))
     energy = np.array(TOI_flares.loc[TOI_flares['Host_ID'] == hosts, 'Energy'])
     All_Energy.append(energy)
-    if len(phases) < 3 or len(peri_phases) < 3:
+    if len(phases) < 5 or len(peri_phases) < 5:
         continue
     if np.isnan(np.mean(peri_phases)) == False:
         peri = True
@@ -86,6 +87,7 @@ for index, hosts in enumerate(set_hosts):
                         peri_phases[index] = peri_phases[index] - 1 
                     if peri_phases[index] < 0:
                         peri_phases[index] = peri_phases[index] + 1
+                peri_phases = np.sort(peri_phases)
                 D, p_ks_samp = ks_1samp(peri_phases, uniform.cdf, args=(0, 1))
                 A, p_ad_samp = ad_test(peri_phases, uniform(0,1), assume_sorted=True)
                 KS_Sample_list.append(p_ks_samp)
@@ -109,6 +111,7 @@ for index, hosts in enumerate(set_hosts):
             AD_Sample_list.append(p_ad_samp)
     if p_KU < 1:
         interest_hosts.append([hosts, p_KU, p_KS, p_AD, np.median(KS_Sample_list), np.median(AD_Sample_list), len(peri_phases), np.mean(dlogz), peri])
+        # interest_hosts.append([p_KU, p_KS, p_AD, np.median(KS_Sample_list), np.median(AD_Sample_list), len(peri_phases)])
         x = (np.sort(peri_phases)).tolist()
         y = (np.arange(len(x))/float(len(x))).tolist()
         x.insert(0, str(hosts) + '_x')
@@ -123,7 +126,7 @@ for index, hosts in enumerate(set_hosts):
 #     writer = csv.writer(f)
 #     for values in zip_longest(*All_CDF):
 #         writer.writerow(values)
-with open("C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/KS_KU_Tests/K_Hosts_New.csv","w+", newline='') as f:
+with open("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/KS_KU_Tests/K_Tests/Exo/K_All_Exo.csv","w+", newline='') as f:
     writer = csv.writer(f)
     for values in interest_hosts:
         writer.writerow(values)
