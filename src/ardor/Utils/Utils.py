@@ -7,6 +7,8 @@ Created on Fri Oct 25 10:34:09 2024
 import pandas as pd
 import numpy as np
 import warnings
+import os
+import ardor.Flares.Flare as Flare
 warnings.filterwarnings("ignore")
 def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[], output_dir = None, specifier_column = None):
     '''
@@ -61,7 +63,30 @@ def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[],
         output_data.to_csv(output_dir, index=False)
 
 
+
+
 source_file = "C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Alfven_Parameters/Alfven_Catalog.csv"
-output_file = "C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_Exoplanet_MCMC_Flares.csv"
+output_file = "C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/All_TOI_MCMC_Flares.csv"
+data = pd.read_csv(output_file)
+hosts = set(data['Host_ID'])
+folders  = os.listdir('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/TOIs/')
+output_list = []
+for host in hosts:
+    obs_time = 0
+    count = 0
+    fast_count = 0
+    for folder in folders:
+        if folder == str(host):
+            files = os.listdir("C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/TOIs/" + folder)
+            for file in files:
+                if file.endswith('s_lc.fits'):
+                    count += 1
+            obs_time += (count)*26
+            output_list.append(obs_time)
+output_list = np.array(output_list)
+print(np.mean(output_list))
+# data['Obs_Time'] = output_list
+# data.to_csv('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_TOI_MCMC_Flares_New.csv')
+                
 # Data_Transfer(source_file, output_file, 'Host_ID', column_headers = ["st_met", "st_age", "st_rotp"], output_dir="C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/New_file.csv", specifier_column='pl_letter')
     

@@ -40,15 +40,10 @@ def find_nearest(array, value):
     idx = (np.abs(array - value)).argmin()
     return idx
 
-def SPI_sigma(sigma, num, duration):
-    base = np.ones(num)
-    phase = 0
-    for index, points in enumerate(base):
-        phase += 1/num
-        if phase > 0.5 - duration/2 and phase < 0.5 + duration/2:
-            base[index] = base[index] + gaussian(phase, 0.5, sigma)
-    model = (base) / simpson(base, np.linspace(0,1,num=num))
-    return model, np.linspace(0, 1, num=num)
+def SPI_sigma(sigma, num):
+    phase = np.linspace(0,1,num=num)
+    base = gaussian(phase, 0.5, sigma)
+    return base, np.linspace(0, 1, num=num)
     
 
 def SPI_sigma_flare_injection(light_curve, SPI_parameter, SPI_duration, pl_period, sp_type = 'M', flare_type='Flaring', fast=False, theta_param = 0, phi_param = 0):
@@ -145,10 +140,11 @@ def SPI_cubic_flare_injection(light_curve, star, planet, sp_type = 'M', fast=Fal
             flares += 1
     return lc, random_time
 
-def SPI_Cubic(star, planet, periastron_index, length = 10):
+def SPI_Cubic(ratio, loc, e, star, planet, length = 100):
     probability_density = []
     bool_list = []
-    for distance in planet.position:
+    time, position = OML.orbit_pos_v_time(planet.period, e, planet.a, orbit_length = length,  arg_periastron=loc)
+    for distance in position:
         if distance > star.Alfven:
             bool_list.append(0)
         if distance <= star.Alfven:
@@ -157,18 +153,9 @@ def SPI_Cubic(star, planet, periastron_index, length = 10):
         probability_density.append(probability)
     percent = np.sum(bool_list)/len(bool_list)
     bool_list = np.array(bool_list)
-    phase = planet.time/planet.period
-    planet.periastron = periastron_index
-    index = int(len(planet.orbit)*periastron_index/2)
-    rotated_probability = probability_density[-index:] + probability_density[:-index]
-    rotated_bool = np.concatenate((bool_list[int(len(bool_list)/2):],  bool_list[:int(len(bool_list)/2)]))
+    phase = time/planet.period
     uniform = np.ones(len(phase))
-    rotated_probability = np.array(rotated_probability)
-    rotated_probability = (rotated_probability/simpson(rotated_probability))
-    probability_dist = rotated_probability*(star.Alfven/min(planet.position))*rotated_bool
-    if probability_dist.sum() == 0:
-        probability_dist = np.ones(len(probability_dist))
-    integral = simpson(probability_dist, x= phase)
-    probability_dist = probability_dist/integral
-    probability_dist = (probability_dist*(planet.B/star.B)*percent + uniform)/simpson(probability_dist*(planet.B/star.B)*percent+ uniform, x= phase)
+    integral = simpson(probability_density, x= phase)
+    probability_dist = probability_density/integral
+    probability_dist = np.array((probability_dist*ratio*percent + uniform)/simpson(probability_dist*ratio*percent+ uniform, x= phase))
     return probability_dist, planet.phase/(2*np.pi)

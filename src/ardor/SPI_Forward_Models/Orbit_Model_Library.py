@@ -156,7 +156,7 @@ class Star:
 ##The radius is given in Jupiter radii, the semi-major axis in AU, and the
 ##magnetic field strength in Gauss. The phase related parameters are in radians.
 class Planet:
-    def __init__(self, radius, period, a, e, B, arg_periastron=0, orbit_length=7000,inclination=90, star = None, compute_period = True):
+    def __init__(self, radius, period, a, e, B, arg_periastron=0, orbit_length=100,inclination=90, star = None, compute_period = True):
         '''
         The `Planet` class initializes with basic physical parameters found on, e.g., the Exoplanet Archive
         and generates the orbital geometry of a system, including orbital distances as a function of time 
@@ -279,7 +279,7 @@ def orbit_pos_v_time(period, e, a, orbit_length = 10, phase=False, arg_periastro
     while time < period:
         n = np.pi*2/period
         M = n*time
-        E = M_newton(e, M)
+        E = (M_newton(e, M) + 1) + arg_periastron
         dist = a*(1-e*np.cos(E))
         time += 1/orbit_length
         time_list.append(time)
