@@ -11,7 +11,7 @@ import numpy as np
 from scipy.integrate import simpson
 import warnings
 import ardor.SPI_Forward_Models.Orbit_Model_Library as OML
-from matplotlib import pyplot as plt
+from scipy.stats import vonmises
 warnings.filterwarnings("ignore", category=DeprecationWarning)  
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -20,11 +20,6 @@ font = {'family': 'serif',
         'weight': 'normal',
         'size': 14,
         }
-def gaussian(x, mu, sig):
-    return (
-        1.0 / (np.sqrt(2.0 * np.pi) * sig) * np.exp(-np.power((x - mu) / sig, 2.0) / 2)
-    )
-
 def amp_log_normal():
     value = 1000
     while value > 0.2 or value < 0.01:
@@ -40,10 +35,11 @@ def find_nearest(array, value):
     idx = (np.abs(array - value)).argmin()
     return idx
 
-def SPI_sigma(sigma, num):
+def SPI_kappa(kappa,loc, num):
     phase = np.linspace(0,1,num=num)
-    base = gaussian(phase, 0.5, sigma)
-    return base, np.linspace(0, 1, num=num)
+    phases_theta = np.linspace(-np.pi, np.pi, num=num)
+    base = vonmises.pdf(phases_theta, kappa, loc)
+    return base, phase
     
 
 def SPI_sigma_flare_injection(light_curve, SPI_parameter, SPI_duration, pl_period, sp_type = 'M', flare_type='Flaring', fast=False, theta_param = 0, phi_param = 0):
@@ -67,7 +63,7 @@ def SPI_sigma_flare_injection(light_curve, SPI_parameter, SPI_duration, pl_perio
     lc = Flare.tier0(light_curve)
     length = len(lc.time)
     phase_array = np.linspace(0, 1, length)
-    model = SPI_sigma(phase_array, SPI_parameter, length, SPI_duration)
+    model = SPI_kappa(phase_array, SPI_parameter, length, SPI_duration)
     ## Assume phase is random to begin each light curve. Periastron at 0.5
     phase = np.random.random()
     ## Iterate over the time scale of the light curve
@@ -157,5 +153,5 @@ def SPI_Cubic(ratio, loc, e, star, planet, length = 100):
     uniform = np.ones(len(phase))
     integral = simpson(probability_density, x= phase)
     probability_dist = probability_density/integral
-    probability_dist = np.array((probability_dist*ratio*percent + uniform)/simpson(probability_dist*ratio*percent+ uniform, x= phase))
+    probability_dist = np.array((probability_dist*percent*ratio + uniform)/simpson(probability_dist*ratio*percent+ uniform, x= phase))
     return probability_dist, planet.phase/(2*np.pi)

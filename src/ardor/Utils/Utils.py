@@ -61,30 +61,52 @@ def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[],
         new_output.to_csv(new_output, index=False)
     elif output_dir != None:
         output_data.to_csv(output_dir, index=False)
+def range_shift(data, a, b, x, y):
+    '''
+    Generates a linear map to take data in range [a,b] to new range of [x,y].
+
+    Parameters
+    ----------
+    data : float
+        Data to linearly map.
+    a : float
+        Lower bound of original data.
+    b : float
+        Upper bound of original data.
+    x : float
+        Lower bound of new data.
+    y : float
+        Upper bound of new data.
+
+    Returns
+    -------
+    new_data: float
+        Linearly transformed data in new range [x,y].
+
+    '''
+    return x + (y-x)/(b-a)*(data-a)
 
 
-
-
-source_file = "C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Alfven_Parameters/Alfven_Catalog.csv"
-output_file = "C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/All_TOI_MCMC_Flares.csv"
-data = pd.read_csv(output_file)
-hosts = set(data['Host_ID'])
-folders  = os.listdir('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/TOIs/')
-output_list = []
-for host in hosts:
-    obs_time = 0
-    count = 0
-    fast_count = 0
-    for folder in folders:
-        if folder == str(host):
-            files = os.listdir("C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/TOIs/" + folder)
-            for file in files:
-                if file.endswith('s_lc.fits'):
-                    count += 1
-            obs_time += (count)*26
-            output_list.append(obs_time)
-output_list = np.array(output_list)
-print(np.mean(output_list))
+# source_file = "C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Alfven_Parameters/Alfven_Catalog.csv"
+# output_file = "C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/All_TOI_MCMC_Flares.csv"
+# data = pd.read_csv(output_file)
+# hosts = set(data['Host_ID'])
+# folders  = os.listdir('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/TOIs/')
+# output_list = []
+# for host in hosts:
+#     obs_time = 0
+#     count = 0
+#     fast_count = 0
+#     for folder in folders:
+#         if folder == str(host):
+#             files = os.listdir("C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/TOIs/" + folder)
+#             for file in files:
+#                 if file.endswith('s_lc.fits'):
+#                     count += 1
+#             obs_time += (count)*26
+#             output_list.append(obs_time)
+# output_list = np.array(output_list)
+# print(np.mean(output_list))
 # data['Obs_Time'] = output_list
 # data.to_csv('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_TOI_MCMC_Flares_New.csv')
                 

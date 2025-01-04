@@ -7,118 +7,114 @@ Created on Wed Dec 18 15:29:39 2024
 
 import ardor.SPI_Forward_Models.SPI_Simulation as SPI
 import ardor.SPI_Forward_Models.Orbit_Model_Library as OML
+import ardor.Utils.Utils as U
 from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 from scipy.stats import vonmises
+from scipy.stats import uniform
 from matplotlib import pyplot as plt
+import os
 import numpy as np
 import pandas as pd
+import math
+def round_to_sf(x, sf):
+    """
+    Rounds a number to a specified number of significant figures.
+
+    Args:
+        x: The number to round.
+        sf: The number of significant figures.
+
+    Returns:
+        The rounded number.
+    """
+    if x == 0:
+        return 0.0
+    
+    sign = 1 if x > 0 else -1
+    x = abs(x)
+    
+    rounding_position = sf - int(math.floor(math.log10(x))) - 1
+    
+    rounded_x = round(x, rounding_position)
+    
+    return rounded_x * sign
 def Inverse_Cubic_Function(ratio, loc, e, star, planet):
     model, phase = SPI.SPI_Cubic(ratio, loc,e, star, planet, length=10)
     f = interp1d(np.linspace(0, 1, num=len(model)) ,model, kind='linear')
     return f
 
-def Sigma_Function(sigma):
-    model, phase = SPI.SPI_sigma(sigma, 100)
-    f = interp1d(phase ,model, kind='linear')
-    return f
-def find_2d_index_of_max(arr):
-    max_value = np.max(arr)  # Find the maximum value in the array
-    max_index = np.where(arr == max_value)  # Get the indices of the max value
-    return max_index[0][0], max_index[1][0]  # Return the first occurrence (row, col)
-
-def SPI_Unbinned_Liklihood(flare_phases, iterations, null_model = 'Uniform', model = 'Sigma'):
-    log_m_null_list_list = []
-    log_m_model_list_list = []
-    sigma_space = np.logspace(0, -2, num=10)
-    phase_space = np.linspace(0, 1, num = 100)
-    for sigmas in sigma_space:
-        log_m_null_list = []
-        log_m_model_list = []
-        for phase_diff in phase_space:
-            model = Sigma_Function(sigmas, 100, 1)
-            log_m_null = 0
-            log_m_model = 0
-            for phases in flare_phases:
-                log_m_null += np.log(1/len(flare_phases))
-                log_m_model += np.log(model(phases)/len(flare_phases))
-            log_m_null_list.append(log_m_null)
-            log_m_model_list.append(log_m_model)
-            flare_phases += 1/len(phase_space)
-            for index, phase in enumerate(flare_phases):
-                if flare_phases[index] > 1:
-                    flare_phases[index] -= 1
-                elif flare_phases[index] < 0:
-                    flare_phases[index] += 1
-        log_m_model_list_list.append(log_m_model_list)
-        log_m_null_list_list.append(log_m_null_list)
-    log_m_model_list_list = np.array(log_m_model_list_list)
-    log_m_null_list_list = np.array(log_m_null_list_list)
-    sigma_index, phase_index = np.unravel_index(log_m_model_list_list.argmax(), log_m_model_list_list.shape)
-    optimal_simga = sigma_space[sigma_index]
-    optimal_phase = 0.5 - phase_space[phase_index]
-    if optimal_phase < 0:
-        optimal_phase += 1
-    return -2*(np.max(log_m_null_list_list) - np.max(log_m_model_list_list)), optimal_simga, optimal_phase
-
-# results = SPI_Unbinned_Liklihood(phases, 100)
-# print('100 Samples from a Gaussian centered at 0.8, sigma = 0.05')
-# print('Unbinned Maxmimum Likeliehood: ' + str(round(results[0], 4)),
-#       'Optimal Sigma: ' + str(round(results[1], 4)),
-#       'Optimal Phase: ' + str(round(results[2], 4))
-#       )
-
-# print('\n100 Random Samples')
-# phases = np.random.random(100)
-# results = SPI_Unbinned_Liklihood(phases, 100)
-# print('Unbinned Maxmimum Likeliehood: ' + str(round(results[0], 4)),
-#       'Optimal Sigma: ' + str(round(results[1], 4)),
-#       'Optimal Phase: ' + str(round(results[2], 4))
-#       )
-
-data = np.random.normal(loc=0.5, scale=1, size=1000)
-
-# Define the model (Gaussian PDF)
-def sigma_pdf(x, sigma):
-    return Sigma_Function(sigma)(x)
+def VM_pdf(x, loc, kappa):
+    return vonmises.pdf(x, kappa= kappa, loc=loc)
 def cubic_pdf(x, ratio, loc, e, star, planet):
     return Inverse_Cubic_Function(ratio, loc,e, star, planet)(x)
 
-# Define the likelihood function
-def sigma_likelihood(params, data, func):
-    sigma = params
-    print(-np.log(np.prod(func(data, sigma))), sigma)
-    return -np.log(np.prod(func(data, sigma)))
+def VM_likelihood(params, data):
+    loc, kappa = params
+
+    return -np.sum(np.log(VM_pdf(data, loc, kappa)))
 
 def cubic_likelihood(params, data, star, planet):
     ratio, loc,e = params
-    print(-np.log(np.prod(cubic_pdf(data, ratio, loc, e, star, planet))), ratio, loc, e)
-    return -np.log(np.prod(cubic_pdf(data, ratio, loc, e, star, planet)))
+    return -np.sum(np.log(cubic_pdf(data, ratio, loc, e, star, planet)))
+def null_likelihood(data):
+    return -np.sum(np.log(uniform.pdf(data, loc = -np.pi, scale=2*np.pi)))
 
-star = OML.Star(1, 1, 1, radius=1, age=1e9, alfven=0.1)
-planet = OML.Planet(1, 6.7, a=0.0649, e=0.01, B=10)
-# model, phase= SPI.SPI_Cubic(5, star, planet) 
-# plt.plot(phase, model)
-# plt.show()
-# Maximize the likelihood
-initial_guess = [10, 0.7, 0.9]  # Initial guess for mean and standard deviation
-# result = minimize(cubic_likelihood, initial_guess, args=(data, star, planet), bounds=[(1e-3,1e8)])
+def VM_Unbinned_likelihood(flares):
+    results = minimize(VM_likelihood, ([0, 1]), args = (flares), bounds = [(-np.pi, np.pi), (1e-10, None)])
+    thetas = np.linspace(0, np.pi*2, num=100)
+    print(results)
+    return thetas, vonmises.pdf(thetas, loc = results.x[0], kappa = results.x[1])
 
-# Extract fitted parameters
-
-data = pd.read_csv("C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_Exoplanet_MCMC_Flares_New.csv")
-flares = np.array(data.loc[data['Host_ID'] == 'HSPsc', ['Transit_Phase']])
+# data = pd.read_csv("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_Exoplanet_MCMC_Flares_New.csv")
+# flares = np.array(data.loc[data['Host_ID'] == 'AUMic', ['Transit_Phase']])
 # flares = (((flares - 0) * (2*np.pi)) / 1) + -np.pi
-results = minimize(cubic_likelihood, initial_guess, args=(flares, star, planet), bounds=[(1e-3,1e8), (None, None), (0,0.99)])
 
-plt.plot(np.linspace(0, 1), Inverse_Cubic_Function(results.x[0], results.x[1], results.x[2], star, planet)(np.linspace(0,1)))
-print(results)
-# plt.show()
-# sigma_fit = result.x
-# a = vonmises.fit(flares)
-# plt.plot(np.linspace(-np.pi,np.pi, num=1000), vonmises.pdf(np.linspace(-np.pi,np.pi, num=1000), kappa=a[0], loc=a[1]))
-
-# print(a)
-plt.hist(flares, density=True)
-plt.show()
-# print("Fitted standard deviation:", sigma_fit)
+# star = OML.Star(1, 1, 1, radius=1, age=1e9, alfven=0.1)
+# planet = OML.Planet(1, 6.7, a=0.0649, e=0.01, B=10)
+# hosts = set(np.array(data["Host_ID"]))
+# kappa = []
+# loc = []
+# TS = []
+# host_list = []
+# SNR_list = []
+# e = []
+# ratio = []
+# loc = []
+# fit = "VM"
+# runs = os.listdir("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Simulations/G_Type_Inverse_Cubic")
+# for index, sims in enumerate(runs):
+#     if sims[0] == "G":
+#         data = pd.read_csv("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Simulations/G_Type_Inverse_Cubic/" + sims)
+#         print(data)
+#         hosts = set(np.array(data['Host_ID']))
+    
+#         if fit == "VM":
+#             for host in hosts:
+#                 flares = np.array(data.loc[data['Host_ID'] == host, ['Periastron_Phase']])
+#                 flares = U.range_shift(flares, 0, 1, -np.pi, np.pi)
+#                 if np.isnan(np.mean(flares)) == False and len(flares) > 3:
+#                     results = minimize(VM_likelihood, ([0, 1]), args = (flares), bounds = [(-np.pi, np.pi), (1e-10, None)])
+#                     null = null_likelihood(flares)
+#                     host_list.append(host)
+#                     loc.append(round_to_sf(U.range_shift(results.x[0], -np.pi, np.pi, 0, 1), 3))
+#                     kappa.append(round_to_sf(results.x[1], 3))
+#                     TS.append(round_to_sf(2*(null - results.fun), 2))
+#             new_data = pd.DataFrame({"Host_ID": host_list, "Kappa": kappa, "Center": loc, "TS_{VM}":TS})
+#             new_data.to_csv("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Python Scripts/ardor/src/ardor/Statistical_Tests/VM_Unbinned_LK_Sims" + str(index) + ".csv", index=False)
+    
+# if fit == "Cubic":
+#     for host in hosts:
+#         flares = np.array(data.loc[data['Host_ID'] == host, ['Periastron_Phase']])
+#         if np.isnan(np.mean(flares)) == False and len(flares) > 3:
+#             star = OML.Star(1, 1, 1, radius=1, age=1e9, alfven=0.1)
+#             planet = OML.Planet(1, 6.7, a=0.0649, e=0.01, B=10)
+#             results = minimize(cubic_likelihood, ([1, 0.5, 0.01]), args = (flares, star,planet), bounds = [(1e-8,None), (1e-8, 0.999), (0,0.999)])
+#             null = null_likelihood(flares)
+#             host_list.append(host)
+#             e.append(round_to_sf(results.x[2],3))
+#             ratio.append(round_to_sf(results.x[0],3))
+#             loc.append(round_to_sf(results.x[1],3))
+#             TS.append(round_to_sf(2*(null - results.fun), 2))
+#     new_data = pd.DataFrame({"Host_ID": host_list, "B_{P}/B_{S}": ratio, "e": e, "Center": loc, "TS_{Cubic}":TS})
+#     new_data.to_csv("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Python Scripts/ardor/src/ardor/Statistical_Tests/Cubic_Unbinned_LK.csv", index=False)
