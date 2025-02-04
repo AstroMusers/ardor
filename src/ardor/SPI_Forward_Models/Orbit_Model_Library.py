@@ -279,7 +279,7 @@ def orbit_pos_v_time(period, e, a, orbit_length = 10, phase=False, arg_periastro
     while time < period:
         n = np.pi*2/period
         M = n*time
-        E = (M_newton(e, M) + 1) + arg_periastron
+        E = (M_newton(e, M) + 1) + 2.14281
         dist = a*(1-e*np.cos(E))
         time += 1/orbit_length
         time_list.append(time)

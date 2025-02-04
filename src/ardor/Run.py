@@ -24,10 +24,10 @@ import Flare
 # import allesfitter
 
 warnings.filterwarnings("ignore")
-data_dir = 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/TESS Data/All_Exoplanet_Hosts'
-output_dir = 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Flare_csvs/All_Exoplanets'
+data_dir = '/ugrad/whitsett.n/Flare_Data/Tier_2/Hosts'
+output_dir = '/ugrad/whitsett.n/Flare_Data/Tier_2'
 TESS_Folder_ID = os.listdir(data_dir)
-TOI_Catalog = pd.read_csv('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Flare_Catalog_Files/All_Exoplanets/All_Exoplanet_Parameter_Reference.csv')
+TOI_Catalog = pd.read_csv('/ugrad/whitsett.n/Flare_Data/Reference_Files/Alfven_Catalog.csv')
 total_flares = 0
 total_possible_flares = 0
 total_observation_time = 0
@@ -92,11 +92,11 @@ for M_dwarves in TESS_Folder_ID[100:]:
     ##Iteration Scheme
     TOI_ID = str(M_dwarves).replace(' ', '')
     b = os.listdir(data_dir + '/' + M_dwarves)
-    # try:
-    #     os.mkdir(output_dir + '/' + M_dwarves + '/')
-    # except:
-    #     print('Already analyzed')
-    #     continue
+    try:
+        os.mkdir(output_dir + '/' + M_dwarves + '/')
+    except:
+        print('Already analyzed')
+        continue
     ##Relevant parameters from TOI catalog
     period = np.array(TOI_Catalog.loc[TOI_Catalog['Host_Name'] == TOI_ID, 'pl_orbper'])[0]
     epoch = np.array(TOI_Catalog.loc[TOI_Catalog['Host_Name'] == TOI_ID, 'pl_tranmid'])[0]

@@ -12,7 +12,7 @@ import numpy as np
 import os
 from ardor.Flares import aflare
 import math
-from ardor.Utils.planck_law import planck_law
+from ardor.Utils.planck_law import planck_law, planck_integrator
 
 def find_nearest(array, value):
     array = np.asarray(array)
@@ -127,14 +127,55 @@ def return_parameters(mcmc_table_dir):
 
     return [t_peak, t_peak_m, t_peak_p, fwhm, fwhm_m, fwhm_p, amp, amp_m, amp_p]
 
-def flare_energy(fwhm, ampl, Teff, R_stellar):
-    x = np.linspace(0, 0.02, num = 2000)
-    y = aflare.aflare1(x, 0.01, fwhm, ampl)
-    flare_area = simpson(y, x)
-    print(fwhm, ampl, Teff, R_stellar)
-    color_factor = planck_law.planck_integrator(600e-6, 1000e-6, Teff)/planck_law.planck_integrator(600e-6, 1000e-6, 9000)
-    energy = (5.67e-8)*(9000**4)*(flare_area)*np.pi*(R_stellar*6.957e8*R_stellar*6.957e8)*color_factor*(1e7)*86400
-    return energy
+def flare_energy(fwhm, ampl, Teff, R_stellar, uncertainty = False, fwhm_u = 0, fwhm_l = 0, ampl_u = 0, ampl_l = 0,
+                 R_stellar_l = 0, R_stellar_u = 0):
+    if uncertainty == False:
+        x = np.linspace(0, 0.02, num = 2000)
+        y = aflare.aflare1(x, 0.01, fwhm, ampl)
+        flare_area = simpson(y, x)
+        color_factor = planck_integrator(600e-6, 1000e-6, Teff)/planck_integrator(600e-6, 1000e-6, 9000)
+        energy = (5.67e-8)*(9000**4)*(flare_area)*np.pi*(R_stellar*6.957e8*R_stellar*6.957e8)*color_factor*(1e7)*86400
+        return energy
+    if uncertainty == True:
+        x = np.linspace(0, 0.02, num = 2000)
+        y = aflare.aflare1(x, 0.01, fwhm, ampl)
+        flare_area = simpson(y, x)
+        color_factor = planck_integrator(600e-6, 1000e-6, Teff)/planck_integrator(600e-6, 1000e-6, 9000)
+        energy = (5.67e-8)*(9000**4)*(flare_area)*np.pi*(R_stellar*6.957e8*R_stellar*6.957e8)*color_factor*(1e7)*86400
+        samples = []
+        for flare_samples in range(1000):
+            fwhm_sample = fwhm
+            ampl_sample = ampl
+            R_stellar_sample = R_stellar
+            
+            check1 = np.random.random()
+            check2 = np.random.random()
+            check3 = np.random.random()
+            if check1 < 0.5:
+                err = np.abs(np.random.normal(0, scale = fwhm_l))
+                fwhm_sample -= err
+            elif check1 > 0.5:
+                err = np.abs(np.random.normal(0, scale = fwhm_u))
+                fwhm_sample += err
+            if check2 < 0.5:
+                err = np.abs(np.random.normal(0, scale = ampl_l))
+                ampl_sample -= err
+            elif check2 > 0.5:
+                err = np.abs(np.random.normal(0, scale = fwhm_u))
+                ampl_sample += err
+            if check3 < 0.5:
+                err = np.abs(np.random.normal(0, scale = R_stellar_l))
+                R_stellar_sample -= err
+            elif check3 > 0.5:
+                err = np.abs(np.random.normal(0, scale = R_stellar_u))
+                R_stellar_sample += err
+            
+            y = aflare.aflare1(x, 0.01, fwhm_sample, ampl_sample)
+            flare_temp = np.random.normal(loc=9000, scale=500)
+            color_factor = planck_integrator(600e-6, 1000e-6, Teff)/planck_integrator(600e-6, 1000e-6, flare_temp)
+            energy_sample = (5.67e-8)*(9000**4)*(flare_area)*np.pi*(R_stellar*6.957e8*R_stellar*6.957e8)*color_factor*(1e7)*86400
+            samples.append(energy_sample)
+        return energy, samples[320], samples[680]
 
 def csv_cleaner(flare_csv_dir):
     data = pd.read_csv(flare_csv_dir, header=None, index_col=False)
