@@ -295,19 +295,11 @@ def orbit_pos_v_time(period, e, a, orbit_length , phase=False, arg_periastron = 
     time = 0
     time_list = []
     position = []
-<<<<<<< HEAD
     n = np.pi*2/period
     while time < (period):
         M = n*(time)
         E = (M_newton(e, M))
         nu = true_anomaly(E,e)
-=======
-    while time < period:
-        n = np.pi*2/period
-        M = n*time
-        E = (M_newton(e, M) + 1) + 2.14281
-        dist = a*(1-e*np.cos(E))
->>>>>>> 843bcfd59f29e0297b65b05360ddcf3ed4f7ad77
         time += 1/orbit_length
         time_list.append(time)
         position.append(elliptical_dist(a,e,nu))
