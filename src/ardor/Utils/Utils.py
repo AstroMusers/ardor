@@ -86,7 +86,11 @@ def range_shift(data, a, b, x, y):
     '''
     return x + (y-x)/(b-a)*(data-a)
 
-
+def find_nearest(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return idx
+    
 # source_file = "C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Alfven_Parameters/Alfven_Catalog.csv"
 # output_file = "C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/All_TOI_MCMC_Flares.csv"
 # data = pd.read_csv(output_file)

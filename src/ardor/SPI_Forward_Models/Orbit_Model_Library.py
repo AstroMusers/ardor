@@ -8,7 +8,7 @@ Created on Sun May 14 18:28:00 2023
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.integrate import simpson
-
+from scipy.interpolate import interp1d
 ##This defines the stellar parameters relevant in a magnetic star-planet induced flare.
 ##The parameters are mass (in solar masses), distance (in parsecs), luminosity
 ##(in log(L_{solar})), spectral class (O,B,A,F,G,K,M), and optional parameters are
@@ -78,12 +78,15 @@ class Star:
 
         """
         if err == False:
-            self.mass = mass
+            if mass == None:
+                self.mass = radius**(1/0.8)*1.989e33
+            elif mass != None:
+                self.mass = mass
             self.stlumin = 10**(lumin)
             self.lumin = 10**(lumin)*3.8e26
             if radius == None:
                 radius = mass**0.8
-                self.radius = (mass**0.8)*6.957e10  
+                self.radius = (mass**0.8)*6.957e10 
             self.radius = radius*6.957e10
             self.age = age
             self.dist = dist*3.086e18
@@ -110,6 +113,7 @@ class Star:
                 self.Alfven = alfven
             else:
                 self.Alfven = self.radius*6.68459e-14*(0.3+(self.eta+0.25)**(1/4))*2.1
+            self.density = (self.mass*1.989e33)/((4/3)*np.pi*(6.957e10*self.radius)**3)
         elif err == True:
             self.mass = mass
             self.stlumin = 10**(lumin)
@@ -203,14 +207,21 @@ class Planet:
             self.true_anomaly = np.pi*2 + np.pi/2 - arg_periastron*0.0174533
         elif arg_periastron <= 90:
             self.true_anomaly = np.pi/2 - arg_periastron*0.0174533
+        if radius > 0.142744 and radius < 1.11:
+            self.mass = radius**(3/2)
+        if radius < 0.142744:
+            self.mass = radius**(100/27)
+        if radius > 1.142744:
+            self.mass = radius**(0.06)
+        self.density = (self.mass*1.89e30)/((4/3)*np.pi*(self.radius)**3)
         self.inclination = inclination*0.0174533
         self.periastron = None
         self.periastron_time = None
-        self.time, self.position = orbit_pos_v_time(self.period, self.e, self.a, orbit_length = self.orbit_length, phase=False, arg_periastron=arg_periastron)
+        self.time, self.position, self.rot_time = orbit_pos_v_time(self.period, self.e, self.a, orbit_length = self.orbit_length, phase=False, arg_periastron=arg_periastron)
         self.phase = (self.time/self.period)*np.pi*2
         self.orbit = a*(1-e**2)/(1+e*np.cos(self.phase))
         self.magnetosphere = []
-        if Star != None:
+        if star != None:
             for dist in self.position:
                 self.magnetosphere.append(2*(2*1.16)**(1/3)*(self.B/(star.B*(3.4*star.radius/(dist*1.496e+13))**2))*(self.radius/7.149e9))
             self.v = np.sqrt(6.67e-8*star.mass*1.989e+33*(2/(self.position*1.496e+13)-1/(self.a*1.496e+13)))/(1e5)
@@ -264,30 +275,40 @@ def M_prime(e,E):
     return 1- np.cos(E)*e
 
 def M_newton(e,M):
-    E = M
+    if e < 0.8:
+        E = M
+    else:
+        E = np.pi
     for steps in range(100):
         E = E - M_func(e,E,M)/M_prime(e,E)
     return E
-
+def true_anomaly(E, e):
+    beta = e/(1+np.sqrt(1-e**2))
+    return E + 2*np.arctan((beta*np.sin(E))/(1-beta*np.cos(E)))
+def elliptical_dist(a, e, theta):
+    return a*(1-e**2)/(1+np.cos(theta)*e)
 def SPI_Metric(distance, B_star, B_planet=10):
     return np.log10(B_star*B_planet/distance**3)
-
-def orbit_pos_v_time(period, e, a, orbit_length = 10, phase=False, arg_periastron = 0):
+def sol(A, K):
+    return A[K % len(A):] + A[:K % len(A)]
+def orbit_pos_v_time(period, e, a, orbit_length , phase=False, arg_periastron = 0):
     time = 0
     time_list = []
     position = []
-    while time < period:
-        n = np.pi*2/period
-        M = n*time
-        E = (M_newton(e, M) + 1) + arg_periastron
-        dist = a*(1-e*np.cos(E))
+    n = np.pi*2/period
+    while time < (period):
+        M = n*(time)
+        E = (M_newton(e, M))
+        nu = true_anomaly(E,e)
         time += 1/orbit_length
         time_list.append(time)
-        position.append(dist)
+        position.append(elliptical_dist(a,e,nu))
+    rot = int((arg_periastron/(2*np.pi))*len(time_list))
+    rot_time = sol(time_list, rot)
     if phase == True:
-        return np.array(time_list)/period, np.array(position)
+        return np.array(time_list)/period, np.array(position), np.array(rot_time)/period
     else:
-        return np.array(time_list), np.array(position)
+        return np.array(time_list), np.array(position),np.array(rot_time)
 
 
 def find_nearest(array, value):
@@ -379,34 +400,6 @@ def phase_curve(star, planet, interaction=None, linear_parameter=0.1):
     else:
         return curve, periastron_index+1
 
-def probability_density(star, planet, periastron_index, length = 10):
-    probability_density = []
-    bool_list = []
-    for distance in planet.position:
-        if distance > star.Alfven:
-            bool_list.append(0)
-        if distance <= star.Alfven:
-            bool_list.append(1)
-        probability = 1/(distance)**3
-        probability_density.append(probability)
-    percent = np.sum(bool_list)/len(bool_list)
-    bool_list = np.array(bool_list)
-    phase = planet.time/planet.period
-    planet.periastron = periastron_index
-    index = int(len(planet.orbit)*periastron_index/2)
-    rotated_probability = probability_density[-index:] + probability_density[:-index]
-    rotated_bool = np.concatenate((bool_list[int(len(bool_list)/2):],  bool_list[:int(len(bool_list)/2)]))
-    uniform = np.ones(len(phase))
-    rotated_probability = np.array(rotated_probability)
-    rotated_probability = (rotated_probability/simpson(rotated_probability))
-    probability_dist = rotated_probability*(star.Alfven/min(planet.position))*rotated_bool
-    if probability_dist.sum() == 0:
-        probability_dist = np.ones(len(probability_dist))
-    integral = simpson(probability_dist, x= phase)
-    probability_dist = probability_dist/integral
-    probability_dist = (probability_dist*(planet.B/star.B)*percent + uniform)/simpson(probability_dist*(planet.B/star.B)*percent+ uniform, x= phase)
-    return probability_dist, planet.phase/(2*np.pi)
-
 
 def interaction_checker(star, planet):
     check = False
@@ -454,3 +447,69 @@ def plot_orbit_flares(star, planet, flare_phase_list, fig, ax, alfven_radius = F
     plt.setp(L.texts, family='serif')
     ax.set_ylim([0,max(position)*1.1/(star.Alfven)])
 
+def arg_peri_to_epoch(arg, e, a, period, uarg = 0, larg = 0):
+    '''
+    
+
+    Parameters
+    ----------
+    arg : TYPE
+        DESCRIPTION.
+    transit_epoch : TYPE
+        DESCRIPTION.
+    e : TYPE
+        DESCRIPTION.
+    a : TYPE
+        DESCRIPTION.
+    period : TYPE
+        DESCRIPTION.
+    uncertainties : TYPE, optional
+        DESCRIPTION. The default is False.
+
+    Returns
+    -------
+    time : TYPE
+        DESCRIPTION.
+
+    '''
+    if e == 0 or np.isnan(e) == True:
+        print('No argument of periastron!')
+    else:
+        arg_theta = (arg/360)*2*np.pi
+        time, position = orbit_pos_v_time(period, e, a, orbit_length=200, phase=True)
+        omegas = np.linspace(0, 2*np.pi, num=len(time))
+        orbit = a*(1-e**2)/(1+e*np.cos(omegas-arg_theta))
+        transit_theta = np.pi/2
+        transit_distance = orbit[find_nearest(omegas, transit_theta)]
+        if arg >= 90 and arg < 270:
+            transit_time = time[find_nearest(position[:int(len(position)/2)], transit_distance)]
+        else:
+            transit_time = time[find_nearest(position[int(len(position)/2):], transit_distance) + int(len(position)/2)]
+        delta_epoch = transit_time
+        return delta_epoch
+def transit_phase_to_peri_shift(arg, e, a, period,num=20, larg = 0, uarg = 0):
+    lower_arg = arg - larg
+    upper_arg = arg+ uarg
+    if lower_arg < 0:
+        lower_arg += 1
+    if lower_arg > 1:
+        lower_arg -= 1
+    if upper_arg < 0:
+        upper_arg += 1
+    if upper_arg > 1:
+        upper_arg -= 1
+    if lower_arg > upper_arg:
+        lower_arg, upper_arg = upper_arg, lower_arg
+    omegas = np.linspace(lower_arg, upper_arg, num =num)
+    shift = []
+    for omega in omegas:
+        a = arg_peri_to_epoch(omega, e, a, period, larg = larg, uarg = uarg)
+        shift.append(a)
+    cent_shift = shift[find_nearest(omegas, arg)]
+    lower_shift = shift[find_nearest(omegas, lower_arg)]
+    upper_shift = shift[find_nearest(omegas, upper_arg)]
+    if cent_shift > 1:
+        cent_shift -= 1
+    lshift = np.abs(lower_shift-cent_shift)
+    ushift = np.abs(cent_shift - upper_shift)
+    return cent_shift, lshift, ushift

@@ -12,16 +12,14 @@ from scipy.stats import linregress
 import numpy as np
 import pandas as pd
 import os
-from ardor.Utils.planck_law import planck_law as pl
 from ardor.Flares import aflare
+import ardor.SPI_Forward_Models.SPI_Simulation as SPI
 import copy
 from ardor.Flares import allesfitter_priors
 import shutil
 import lightkurve as lk
 import collections as c
 from matplotlib import pyplot as plt
-# import allesfitter
-
 def linear(x, a, b):
     '''
     
@@ -105,7 +103,7 @@ def TESS_FITS_csv(input_file, csv_directory, csv_name=None):
     grand_list = pd.DataFrame({'time': time, 'Normalized_Flux': data, 'error': error, 'trend': trend.flux})
     grand_list.to_csv(directory, index=False)
 
-def TESS_data_extract(fits_lc_file, PDCSAP_ERR=False):
+def TESS_data_extract(fits_lc_file, PDCSAP_ERR=True):
     '''
 
     Parameters
@@ -136,6 +134,98 @@ def TESS_data_extract(fits_lc_file, PDCSAP_ERR=False):
         LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'error'])
         lc = LightCurve(time, flux, error)
         return lc
+    
+def EVE_data_extract(fits_lc_file, line_bool = True, diode_bool = False, line = 'HI', band = 'GOES-14 EUV-A'):
+    '''
+
+    Parameters
+    ----------
+    fits_lc_file : string
+        Directory of the TESS light curve fits file
+    PDCSAP_ERR : bool, optional
+        True will return PDCSAP_FLUX error. The default is False.
+
+    Returns
+    -------
+    lc : named tuple
+        Returns named tuple that has attributes flux, time, and error.
+
+    '''
+    if diode_bool == True and line_bool == False:
+        hdul = fits.open(fits_lc_file)
+        irradiance = np.array(hdul[6].data['DIODE_IRRADIANCE'])
+        error = np.array(hdul[6].data['DIODE_ACCURACY'])
+        if line == 'HI':
+            index = 5
+            min_wave = 121
+            max_wave = 122
+    if line_bool == True and diode_bool == False:
+        hdul = fits.open(fits_lc_file)
+        irradiance = np.array(hdul[6].data['LINE_IRRADIANCE'])
+        error = np.array(hdul[6].data['LINE_ACCURACY'])
+        if line == 'HI':
+            index = 34
+            min_wave = 5.005
+            max_wave = 14.995
+    elif line_bool == False and diode_bool == False:
+        hdul = fits.open(fits_lc_file)
+        irradiance = np.array(hdul[6].data['BAND_IRRADIANCE'])
+        error = np.array(hdul[6].data['BAND_ACCURACY'])
+        if band == 'GOES-14 EUV-A':
+            index = 7
+            min_wave = 5.005
+            max_wave = 14.995
+        if band == 'GOES-14 EUV-B':
+            index = 8
+            min_wave = 25.005
+            max_wave = 33.785
+        if band == 'MEGS-A1':
+            index = 15
+            min_wave = 25.005
+            max_wave = 33.785
+        if band == 'MEGS-A2':
+            index = 16
+            min_wave = 17.24
+            max_wave = 33.34
+        if band == 'MEGS-B short':
+            index = 17
+            min_wave = 33.34
+            max_wave = 61
+        if band == 'MEGS-B both':
+            index = 18
+            min_wave = 61
+            max_wave = 79.1
+        if band == 'MEGS-B long':
+            index = 19
+            min_wave = 79.1
+            max_wave = 107
+    irradiance = irradiance[:,index]
+    irradiance_indices = np.where(irradiance == -1)
+    irradiance = np.delete(irradiance, irradiance_indices)
+    
+    flags = np.array(hdul[6].data['FLAGS'])
+    flags = np.delete(flags, irradiance_indices)
+
+    error = error[:,index]
+    error = np.delete(error, irradiance_indices)
+    
+    time = np.array(hdul[6].data['TAI'])
+    time = np.delete(time, irradiance_indices)
+    
+    flag_indicies = np.where(flags != 0)
+    
+    irradiance = np.delete(irradiance, flag_indicies)
+    time = np.delete(time, flag_indicies)
+    error = np.delete(error, flag_indicies)
+    
+    flux = irradiance/np.median(irradiance)
+    time = 2457000 - 2436569.5000000 + (time/3.154e7)
+    error= error/np.median(irradiance)
+    LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'error'])
+    BandMeta = c.namedtuple('Metadata', ['band', 'wave_min', 'wave_max'])
+    meta = BandMeta(band, min_wave,max_wave)
+    lc = LightCurve(time, flux, error)
+    return lc, meta
 
 
 def phase_folder(time, period, epoch):
@@ -158,8 +248,7 @@ def phase_folder(time, period, epoch):
 
 
     '''
-    phase = (time - (epoch+period/2)) % period
-    phase = phase - period/2
+    phase = ((time - (epoch+period/2)) % period)/period
     return phase
 
 def flare_ID(data, sigma, fast = False, injection = False, old = False):
@@ -442,6 +531,16 @@ def lk_detrend(data, time, scale=401, return_trend = False):
     elif return_trend == True:
         lc, trend = lk.LightCurve(flux = data, time = time).flatten(scale, sigma=3, return_trend=return_trend)
         return lc.flux, trend
+    
+def EVE_detrend(data, time, return_trend = True):
+    p = np.polyfit(time, data, 2)
+    trend = np.polyval(p,time)
+    flux = data - trend
+    if return_trend == True:
+        return flux, trend
+    else:
+        return flux
+    
 
 def flare_phase_folded_ID(phase, flare_array, period, epoch):
     new_ID_list = []
@@ -497,13 +596,56 @@ def tier0(TESS_fits_file, scale = 401, injection = False):
     elif TESS_fits_file.endswith('a_fast-lc.fits') == False:  
         fast = False
         cadence = 2
-    b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
-    time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
-    detrend_flux, trend = lk_detrend(flux, time, scale=scale, return_trend= True)
-    observation_time = cadence*len(time)
-    LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
-    lc = LightCurve(time, flux, detrend_flux, pdcsap_error, fast, observation_time, trend.flux)
+    if injection == False:
+        b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
+        time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
+        detrend_flux, trend = lk_detrend(flux, time, scale=scale, return_trend= True)
+        observation_time = cadence*len(time)
+        LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
+        lc = LightCurve(time, flux, detrend_flux, pdcsap_error, fast, observation_time, trend.flux)
+    elif injection == True:
+        lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
+        detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
+        observation_time = cadence*len(lc.time)
+        LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
+        lc = LightCurve(lc.time, lc.flux, detrend_flux, lc.error, fast, observation_time, trend.flux)
     return lc
+
+
+def EVE_tier0(EVE_fits_file, diode_bool = False, line_bool = True, cadence=1, band='GOES-14 EUV-A', line='HI'):
+    '''
+    Tier 0 of ardor. This function accepts a TESS '...lc.fits' file, and returns
+    a named tuple which contains a NAN free, detrended and normalized 
+    light curve. Additionally returns the observation time, as well as a boolean
+    denoting if it is 2 minute or 20 second cadence data, as well as the 
+    derived trend in the detrending process.
+
+    Parameters
+    ----------
+    TESS_fits_file : string
+        The TESS light curve you wish to detrend and clean up.
+    Returns
+    -------
+    LightCurve : named tuple
+        A named tuple which has keys:
+            - time: time, BJD. (array)
+            - flux: normalized flux. (array)
+            - detrended_flux: Detrended, normalized flux. (array)
+            - error: Normalized error. (array)
+            - fast_bool: Boolean denoting if the TESS data is 2 minute or 20
+            second cadence. fast == True means 20 second cadence. (bool)
+            - obs_time: The total observation time reflected by the data, in
+            minutes. This only counts data present in the file, excludes gaps
+            or NAN values. (float)
+            - trend: The trend removed in the detrending step. (array)
+    '''
+    lc,meta = EVE_data_extract(EVE_fits_file, line_bool=line_bool, band = band, line = line)
+    detrend_flux, trend = EVE_detrend(lc.flux, lc.time, return_trend= True)
+    observation_time = cadence*len(lc.time)
+    LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'obs_time', 'trend'])
+    lc = LightCurve(lc.time, lc.flux, detrend_flux, lc.error, observation_time, trend)
+
+    return lc,meta
 
 
 def tier1(detrend_flux, sigma, fast=False, injection = False):
@@ -534,6 +676,7 @@ def tier1(detrend_flux, sigma, fast=False, injection = False):
     Flare = c.namedtuple('Flares', ['index', 'length'])
     flare = Flare(flares, lengths)
     return flare
+
 
 def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
           output_dir = 'Output.csv', host_name = 'My_Host', T = 4000, 

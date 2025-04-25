@@ -1,0 +1,7 @@
+#name,value,fit,bounds,label,unit,truth
+#flares,,,,,,
+flare_tpeak_1,0.3,1,uniform 0.2 0.4,flare_tpeak_1,days,0.32
+flare_fwhm_1,0.1,1,uniform 0 0.2,flare_fwhm_1,days,0.039583333
+flare_ampl_1,0.01,1,uniform 0 0.05,flare_ampl_1,rel. flux,0.012
+#errors (overall scaling) per instrument,,,,,,
+ln_err_flux_Flaronardo,-7,1,uniform -9 -5,$\log{\sigma_\mathrm{Flaronardo}}$,log rel. flux,NaN
