@@ -23,11 +23,17 @@ font = {'family': 'serif',
         'weight': 'normal',
         'size': 14,
         }
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> 843bcfd59f29e0297b65b05360ddcf3ed4f7ad77
 #### FORWARD MODEL PDFS ####
 def SPI_kappa(kappa,loc, num):
     phase = np.linspace(0,1,num=num)              
     base = vonmises.pdf(UT.range_shift(phase, 0, 1, -np.pi, np.pi), kappa = kappa, loc = UT.range_shift(loc, 0, 1, -np.pi, np.pi))*2*np.pi
     return base, phase
+<<<<<<< HEAD
 def SPI_Cubic(ratio, loc, e, a, period, length = 200):
     probability_density = []
     # bool_list = []
@@ -46,6 +52,28 @@ def SPI_Cubic(ratio, loc, e, a, period, length = 200):
     probability_density = np.array((np.array(normalized_dist)*ratio + np.array(uni))/simpson(np.array(normalized_dist)*ratio + np.array(uni),x=phase, dx=0.01))
     print(simpson(probability_density, x=phase, dx=0.01))
     return rot_phase, probability_density
+=======
+def SPI_Cubic(ratio, loc, e, star, planet, length = 100):
+    probability_density = []
+    bool_list = []
+    time, position = OML.orbit_pos_v_time(planet.period, e, planet.a, orbit_length = length,  arg_periastron=loc)
+    for distance in position:
+        if distance > star.Alfven:
+            bool_list.append(0)
+        if distance <= star.Alfven:
+            bool_list.append(1)
+        probability = 1/(distance)**3
+        probability_density.append(probability)
+    print(len(position), len(probability_density))
+    percent = np.sum(bool_list)/len(bool_list)
+    bool_list = np.array(bool_list)
+    phase = time/planet.period
+    uniform = np.ones(len(phase))
+    integral = simpson(probability_density, x= phase)
+    probability_dist = probability_density/integral
+    probability_dist = np.array((probability_dist*percent*ratio + uniform)/simpson(probability_dist*ratio*percent+ uniform, x= phase))
+    return probability_dist, phase
+>>>>>>> 843bcfd59f29e0297b65b05360ddcf3ed4f7ad77
 
 
 ##### FLARE INJECTION IMPLEMENTATIONS #######
@@ -68,6 +96,7 @@ def find_nearest(array, value):
 def SPI_kappa_flare_injection(light_curve, kappa, loc, pl_period, sp_type = 'M', flare_type='Flaring', fast=False, theta_param = 0, phi_param = 0):
     location_list = []
     ## Approximate flare rate per 2 minute cadence of flaring M/F stars (~0.5 flares/day)
+<<<<<<< HEAD
     if sp_type == 'M':
         rate = 1.4e-4
     if sp_type == 'F':
@@ -76,6 +105,17 @@ def SPI_kappa_flare_injection(light_curve, kappa, loc, pl_period, sp_type = 'M',
         rate = 5e-5
     if sp_type == 'K':
         rate = 5e-5
+=======
+    if flare_type == 'Flaring':
+        if sp_type == 'M':
+            rate = 4e-4
+        if sp_type == 'F':
+            rate = 5e-05
+        if sp_type == 'G':
+            rate = 5e-5
+        if sp_type == 'K':
+            rate = 1e-5
+>>>>>>> 843bcfd59f29e0297b65b05360ddcf3ed4f7ad77
     ## Poor statistics on this, but G type stars flare ~2e-5 per 2 minute cadence
     elif flare_type == 'Not Flaring':
         rate = 2.78e-8

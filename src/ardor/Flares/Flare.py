@@ -296,7 +296,7 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
     flare_length_list = []
     flare = False
     begin = 0
-    end = 100
+    end = 1000
     shift = 0
     peak_index = 0
     sig = sigma*mask_data[begin:end].std()
@@ -308,9 +308,9 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
     if fast == False:
         for index, flux in enumerate(data):
             try:
-                if shift == 100:
-                    begin += 100
-                    end += 100
+                if shift == 1000:
+                    begin += 1000
+                    end += 1000
                     sig = sigma*mask_data[begin:end].std()
                     mu = np.ma.mean(mask_data[begin:end])
                     shift = 0
@@ -680,8 +680,8 @@ def tier1(detrend_flux, sigma, fast=False, injection = False):
 
 def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
           output_dir = 'Output.csv', host_name = 'My_Host', T = 4000, 
-          host_radius = 1, csv = True, planet_period = 5, planet_epoch = 1000, 
-          Sim = False, injection = False, const = 0, obs_time=0, extract_window = 50, catalog_name = 'All_Flare_Parameters.csv'):
+          host_radius = 1, csv = True, planet_period = 5, transit_epoch = 1000, peri_epoch = 1000,
+          Sim = False, injection = False, const = 0, extract_window = 50, catalog_name = 'All_Flare_Parameters.csv'):
     '''
     
     Parameters
@@ -728,12 +728,12 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
     accepted_flare_index = []
     accepted_flare_number = []
     param_list = []
-    phase_list = []
     event_list = []
     chi_square_list = []
-    obs_time_list = []
     flare_count = 0
     total_flares = 0
+    peri_phase_list = []
+    transit_phase_list = []
     flux = np.array(flux)
     if csv == True:
         os.makedirs(output_dir + '/' + str(host_name), exist_ok=True)
@@ -817,8 +817,8 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
             chi_square_list.append(chi_squared)
             Teff.append(T)
             radius.append(host_radius)
-            obs_time_list.append(obs_time)
-            phase_list.append((((time[flare_events] +2457000) - (planet_epoch+planet_period/2)) % planet_period)/planet_period)
+            transit_phase_list.append((((time[flare_events] +2457000) - (transit_epoch+planet_period/2)) % planet_period)/planet_period)
+            peri_phase_list.append((((time[flare_events] +2457000) - (peri_epoch+planet_period/2)) % planet_period)/planet_period)
             try:
                 X = np.column_stack((new_time, new_data, new_error))
             except:
@@ -834,15 +834,15 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
     if output_dir != None:
         os.makedirs(output_dir, exist_ok=True)
         if len(TOI_ID_list) > 0:
-            ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, peak_time_BJD, amplitude, time_scale, Teff, radius, phase_list, obs_time_list, chi_square_list))
+            ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, peak_time_BJD, amplitude, time_scale, Teff, radius,peri_phase_list, transit_phase_list, chi_square_list))
             with open(output_dir + '/' + catalog_name, "a") as f:
                 np.savetxt(f, ZZ, delimiter=",", fmt='%s')
                 f.close()
     if Sim == False and injection == False:
-        ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, amplitude, time_scale, Teff, radius, phase_list,obs_time_list, chi_square_list))
+        ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, amplitude, time_scale, Teff, radius,peri_phase_list, transit_phase_list, chi_square_list))
         return ZZ, flare_count
     if Sim == True:
-        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, phase_list,obs_time_list, chi_square_list))
+        ZZ = np.column_stack((TOI_ID_list, flare_number, peak_time, amplitude, time_scale, Teff, radius, peri_phase_list, transit_phase_list, chi_square_list))
         return ZZ
     if injection == True and Sim == False:
         return event_list
