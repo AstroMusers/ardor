@@ -6,9 +6,6 @@ Created on Sun May 14 18:28:00 2023
 """
 
 import numpy as np
-from matplotlib import pyplot as plt
-from scipy.integrate import simpson
-from scipy.interpolate import interp1d
 ##This defines the stellar parameters relevant in a magnetic star-planet induced flare.
 ##The parameters are mass (in solar masses), distance (in parsecs), luminosity
 ##(in log(L_{solar})), spectral class (O,B,A,F,G,K,M), and optional parameters are
@@ -254,27 +251,59 @@ class Planet:
 ##will not increase the total probability of a flare.
 def M_func(e,E,M):
     '''
-
+    Function relating mean anomaly and eccentric anomaly.
     Parameters
     ----------
     e : float
-        The eccentricity.
+        Orbital eccentricity.
     E : float
-        The eccentric anomaly.
+        The eccentric anomaly, in degrees.
     M : float
-        The mean anomaly.
+        The mean anomaly, in degrees.
 
     Returns
     -------
-    TYPE
-        DESCRIPTION.
+    function
+        Mean anomaly/eccentriciy equation for NR method.
 
     '''
     return E - np.sin(E)*e - M
 def M_prime(e,E):
+    '''
+    Derivative of mean anomaly equation to be used in NR method.
+
+    Parameters
+    ----------
+    e : float
+        Orbital eccentricity.
+    E : float
+        Eccentric anomaly, in degrees.
+
+    Returns
+    -------
+    function
+        Derivative for mean anomaly equation.
+
+    '''
     return 1- np.cos(E)*e
 
 def M_newton(e,M):
+    '''
+    Newton-Raphson method to solve for eccentric anomaly given mean anomaly.
+
+    Parameters
+    ----------
+    e : float
+        Orbital eccentricity.
+    M : float
+        Mean anomaly, in degrees.
+
+    Returns
+    -------
+    E : float
+        Eccentric anomaly, in degrees.
+
+    '''
     if e < 0.8:
         E = M
     else:
@@ -283,15 +312,79 @@ def M_newton(e,M):
         E = E - M_func(e,E,M)/M_prime(e,E)
     return E
 def true_anomaly(E, e):
+    '''
+    Computes the true anomaly from the eccentric anomaly.
+
+    Parameters
+    ----------
+    E : float
+        Eccentric anomaly, in degrees.
+    e : float
+        Orbital eccentricity.
+
+    Returns
+    -------
+    true anomaly : float
+        The true anomaly, in degrees.
+
+    '''
     beta = e/(1+np.sqrt(1-e**2))
     return E + 2*np.arctan((beta*np.sin(E))/(1-beta*np.cos(E)))
 def elliptical_dist(a, e, theta):
+    '''
+    Generates instantenous separation of a planetary orbit as function of 
+    true anomaly.
+
+    Parameters
+    ----------
+    a : float
+        Semi-major axis, in AU.
+    e : float
+        Orbital eccentricity.
+    theta : float
+        True anomaly, in degrees
+
+    Returns
+    -------
+    instantanous separation : float
+        The instantanous separation at the specified true anomaly, in AU.
+
+    '''
     return a*(1-e**2)/(1+np.cos(theta)*e)
-def SPI_Metric(distance, B_star, B_planet=10):
-    return np.log10(B_star*B_planet/distance**3)
 def sol(A, K):
     return A[K % len(A):] + A[:K % len(A)]
 def orbit_pos_v_time(period, e, a, orbit_length , phase=False, arg_periastron = 0):
+    '''
+    Uses Newton-Raphson method to generate a time-dependent instantanous separation
+    equation.
+
+    Parameters
+    ----------
+    period : float
+        Orbital period, in days.
+    e : float
+        Orbital eccentricity.
+    a : float
+        Semi-major axis, in AU.
+    orbit_length : float
+        How fine of a grid is returned.
+    phase : bool, optional
+        Whether or not to return as a function of normalized
+        orbital phase (0 to 1), with 0.5 marking periastron. The default is False.
+    arg_periastron : float, optional
+        The argument of periastron, omega, in degrees. The default is 0.
+
+    Returns
+    -------
+    time : numpy array
+        The time, in either phase or days, assuming periastron
+        is mid-phase.
+    separation : numpy array
+        The instantanous separation, in AU.
+    rotated time : numpy array
+        The time array rotated to the appropriate argument of periastron.
+
+    '''
     time = 0
     time_list = []
     position = []
@@ -312,164 +405,78 @@ def orbit_pos_v_time(period, e, a, orbit_length , phase=False, arg_periastron = 
 
 
 def find_nearest(array, value):
+    '''
+    Takes in an array and value and returns the index of the closest value
+    in the array.
+
+    Parameters
+    ----------
+    array : np array
+        Array to search.
+    value : float
+        Value to find the closest in the array.
+
+    Returns
+    -------
+    idx : int
+        Index in the array that most closely matches the value passed.
+
+    '''
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
     return idx
 
-def asymmetric_error(value, upper, lower, lumin_check = False):
-    if lumin_check == False:
-        while value < 0:
-            if np.isnan(value) == True:
-                return value
-            if np.isnan(lower) == True:
-                lower = 0.1*value
-            if np.isnan(lower) == True:
-                upper = 0.1*value
-            check = np.random.random()
-            if check > 0.5:
-                err = np.abs(value - np.random.normal(loc = value, scale = np.abs(upper)))
-                value = value + err
-            elif check <= 0.5:
-                err = np.abs(value - np.random.normal(loc = value, scale = np.abs(lower)))
-                value = value - err
-    if lumin_check == True:
-        if np.isnan(value) == True:
-            return value
-        if np.isnan(lower) == True:
-            lower = 0.1*value
-        if np.isnan(lower) == True:
-            upper = 0.1*value
-        check = np.random.random()
-        if check > 0.5:
-            err = np.abs(value - np.random.normal(loc = value, scale = np.abs(upper)))
-            value = value + err
-        elif check <= 0.5:
-            err = np.abs(value - np.random.normal(loc = value, scale = np.abs(lower)))
-            value = value - err
-    return value
 def interaction(star, planet):
+    '''
+    Determines the flare energy predicted by an induced flare following the prescription
+    from Lanza 2018 for main sequence host stars.
+
+    Parameters
+    ----------
+    star : Star class object.
+        The host star of the interaction.
+    planet : Planet class objected
+        The planet of the interaction.
+
+    Returns
+    -------
+    flare_time : float
+        The time scale of SPI induced flare, in seconds.
+    total_energy : float
+        Total energy of the SPI induced flare, in ergs.
+
+    '''
     period = planet.period
     flare_time = 24*60*(period)*(2/np.pi)* ((2*1.16)**(1/3) * (((planet.a*1.496e13))/(star.radius))**(-(1/3)) * ((1-planet.e)**(7/6))/((1+planet.e)**(1/2)) * (planet.B/star.B)**(1/3) * (planet.radius)/(star.radius))
     total_energy = (star.B**2*(star.radius)**3)*((((planet.B/star.B)*0.04)/((planet.a*(1-planet.e)*1.496e13)/star.radius)**2))*(1+(1/3)*((planet.a*(1-planet.e))/(2*(2*1.16)**(1/3)*(planet.B/(star.B*(planet.a*(1-planet.e)/star.radius)**(-2)))**(1/3)*planet.radius)))
     return flare_time, total_energy
 
 
-def phase_curve(star, planet, interaction=None, linear_parameter=0.1):
-    base = []
-    subtraction = []  
-    transit_loc = int(len(planet.orbit)*((planet.true_anomaly)/(2*np.pi)))
-    ingress_phase = int(np.arccos(1-(planet.radius*2)**2/(2*(planet.orbit[transit_loc]*1.496e13)**2))/(2*np.pi)*len(planet.orbit))
-    transit_phase = int(np.arccos(1-(star.radius*2)**2/(2*(planet.orbit[transit_loc]*1.496e13)**2))/(2*np.pi)*len(planet.orbit))
-    transit_displacement = int(len(planet.orbit)*0.5 - (ingress_phase + transit_phase/2))
-    limb_darkening = []
-    index = 0
-    true_anomaly = planet.true_anomaly
-    if true_anomaly < np.pi:
-        periastron_index = -true_anomaly/np.pi
-    if true_anomaly >= np.pi:
-        periastron_index = (2*np.pi-true_anomaly)/(np.pi)
-    impact_parameter = (planet.a*1.496e13/star.radius)*np.cos(planet.inclination)*((1-planet.e**2)/(1+planet.e*np.sin(planet.arg_periastron)))
-    for thetas in np.arange(-np.pi/2, np.pi/2, np.pi/(2*ingress_phase+transit_phase)):
-        limb_darkening.append(1-linear_parameter*(1-np.cos(thetas)))
-    limb_impact = 1-linear_parameter*(1-np.cos(impact_parameter*(np.pi/2)))
-    limb_darkening.append(limb_darkening[0])
-    for steps in range(len(planet.phase)):
-        base.append(np.random.normal(1, 0.0001))
-    for phases in range(len(planet.orbit)):
-        if phases < transit_displacement:
-            subtraction.append(0)
-        elif phases >= transit_displacement and phases < (transit_displacement + ingress_phase):
-            subtraction.append((-((phases-transit_displacement)/ingress_phase)*(planet.radius**2/star.radius**2))*limb_darkening[index]*limb_impact)
-            index += 1
-        elif phases < (ingress_phase + transit_displacement) + transit_phase:
-            subtraction.append(-(planet.radius**2/star.radius**2)*limb_darkening[index]*limb_impact)
-            index += 1
-        elif phases >= (ingress_phase + transit_displacement) + transit_phase and phases <= (2*ingress_phase + transit_displacement + transit_phase):
-            subtraction.append(-(((transit_displacement+transit_phase+2*ingress_phase)-phases)/ingress_phase)*(planet.radius**2/star.radius**2)*limb_darkening[index]*limb_impact)
-            index += 1
-        elif phases > (2*ingress_phase + transit_displacement) + transit_phase:
-            subtraction.append(0)
-    while len(subtraction) < len(base):
-        subtraction.append(0)
-    base= np.array(base)
-    subtraction = np.array(subtraction)
-    curve = np.add(base,subtraction)
-    if interaction is not None:
-        interaction = np.array(interaction)
-        return np.add(interaction,curve), periastron_index+1
-    else:
-        return curve, periastron_index+1
-
-
-def interaction_checker(star, planet):
-    check = False
-    for instances in planet.orbit:
-        if instances < star.Alfven:
-            check = True
-    return check
-
-
-def orbit_periastron_recenter(time):
-    time = np.roll(time, int(len(time)/2))
-    return time
-
-def plot_orbit_flares(star, planet, flare_phase_list, fig, ax, alfven_radius = False, overlapping_plots = False):
-    phase = planet.phase/(2*np.pi)
-    time, position = orbit_pos_v_time(planet.period, planet.e, planet.a, phase=True, time_step=planet.period/len(planet.orbit))
-    time = orbit_periastron_recenter(time)
-    ax.plot(phase*2*np.pi, planet.orbit2/star.Alfven, linestyle='--', color = 'black')
-    if overlapping_plots == False:
-        ax.scatter(1000, 1000, marker='x', s=150, color='blue', label = 'Super-Alfvenic')
-        ax.scatter(1000, 1000, marker='x', s=150, color='red', label = 'Sub-Alfvenic')
-    # if alfven_radius == True:
-    #     alfven = plt.Circle((0, 0), star.Alfven, transform=ax.transData._b, fill=True, linewidth=2, zorder=10, color='green', alpha=0.2, label='$\mathrm{R_{A}}$')
-    #     plt.gca().add_artist(alfven)
-    for phases in flare_phase_list:
-        distance = position[find_nearest(time, phases)]
-        if phases <= 0.5:
-            phase_rad = phase[find_nearest(planet.orbit2[:int(len(planet.orbit2)/2)], distance)]*2*np.pi
-        if phases > 0.5:
-            phase_rad = phase[find_nearest(planet.orbit2[int(len(planet.orbit2)/2):], distance) ]*2*np.pi
-            phase_rad = phase_rad + np.pi
-        if alfven_radius == False:
-            plt.scatter(phase_rad*2*np.pi, distance, marker='x', s=80)
-        else:
-            if distance > star.Alfven:
-                plt.scatter(phase_rad, distance/star.Alfven, marker='x', s=150, color='blue')
-            elif distance <= star.Alfven:
-                plt.scatter(phase_rad, distance/star.Alfven, marker='x', s=150, color='red')
-    tick_range = np.round(np.linspace(0, np.max(position)*1.1/(star.Alfven), num = 5), 2)
-    ax.set_rticks(tick_range)
-    ax.set_rlabel_position(-22.5)
-    angle = np.deg2rad(67.5)
-    L = ax.legend(loc="lower left",
-          bbox_to_anchor=(.4 + np.cos(angle)/2, .4 + np.sin(angle)/2), prop={'size': 16})
-    plt.setp(L.texts, family='serif')
-    ax.set_ylim([0,max(position)*1.1/(star.Alfven)])
-
-def arg_peri_to_epoch(arg, e, a, period, uarg = 0, larg = 0):
+def arg_peri_to_epoch(arg, e, a, period):
     '''
-    
+    Computes the delay in time between the transit epoch and the epoch of peri-
+    astron given the argument of periastron, eccentricity, semi-major axis,
+    and period.
 
     Parameters
     ----------
-    arg : TYPE
-        DESCRIPTION.
-    transit_epoch : TYPE
-        DESCRIPTION.
-    e : TYPE
-        DESCRIPTION.
-    a : TYPE
-        DESCRIPTION.
-    period : TYPE
-        DESCRIPTION.
-    uncertainties : TYPE, optional
-        DESCRIPTION. The default is False.
+    arg : float
+        Argument of periastron, in degrees. The arguement of ascending node is 
+        when the planet is at quadrature, with the planet approaching the observer.
+    transit_epoch : float
+        Transit epoch, in BJD.
+    e : float
+        Orbital eccentricity.
+    a : float
+        Semi-major axis, in AU.
+    period : float
+        Orbital period, in days.
 
     Returns
     -------
-    time : TYPE
-        DESCRIPTION.
+    delta_epoch : float
+        The time difference between the transit epoch and the periastron epoch.
+        Returns in days. 
 
     '''
     if e == 0 or np.isnan(e) == True:
@@ -487,7 +494,58 @@ def arg_peri_to_epoch(arg, e, a, period, uarg = 0, larg = 0):
             transit_time = time[find_nearest(position[int(len(position)/2):], transit_distance) + int(len(position)/2)]
         delta_epoch = transit_time
         return delta_epoch
+    
+    
 def transit_phase_to_peri_shift(arg, e, a, period,num=20, larg = 0, uarg = 0):
+    '''
+    Takes in the argument of periastron, eccentricity, semi-major axis, and
+    period, and returns the shift in normalized phase (0,1) from the transit 
+    phase. The transit phase is assumed to be at 0.5. It can also take in
+    lower and upper uncertainties of the argument of periastron and return
+    the lower and upper uncertainty in the phase shift.
+    
+    This is computed by comparing two orbital equations:
+        - The first computes the instantaneous separation of the planet
+        with respect to true anomaly. 
+        - The second computes the instantanous separation of the plnaet
+        with respect to time.
+    To find the phase shift given the argument of periastron (true anomaly),
+    we compute the two equations both temporaly and angularly. Based on the
+    solution to the angular equation given the true anomaly, we match the 
+    temporal solution at the same instantanous separation and find the phase
+    shift in time that leads to the same separation solution.
+    Parameters
+    ----------
+    arg : float
+        Argument of periastron, in degrees. The arguement of ascending node is 
+        when the planet is at quadrature, with the planet approaching the observer.
+    transit_epoch : float
+        Transit epoch, in BJD.
+    e : float
+        Orbital eccentricity.
+    a : float
+        Semi-major axis, in AU.
+    period : float
+        Orbital period, in days.
+        DESCRIPTION.
+    num : int, optional
+        The number of true anomalies to use to compute the temporal
+        grid. The default is 20, evenly spaced between 0 and 360.
+    larg : float, optional
+        Lower uncertainty of omega, in degrees. The default is 0.
+    uarg : float, optional
+        Upper uncertainty of omega, in degrees. The default is 0.
+
+    Returns
+    -------
+    cent_shift : float
+        Shift in phase from transit phase to periastron phase.
+    lshift : float
+        Lower error shift in phase.
+    ushift : float
+        Upper error shift in phase.
+
+    '''
     lower_arg = arg - larg
     upper_arg = arg+ uarg
     if lower_arg < 0:

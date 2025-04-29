@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # -*- coding: utf-8 -*-
 """
 Created on Thu Jan  4 12:42:31 2024
@@ -16,6 +15,7 @@ import csv
 from itertools import zip_longest
 from astropy.stats import kuiper
 import ardor.Statistical_Tests.MLE as MLE
+from matplotlib import pyplot as plt
 font = {'family': 'serif',
         'color':  'black',
         'weight': 'normal',
@@ -271,7 +271,7 @@ def K_Tests_Total(flare_df, output_dir, TOI = False, CDFs = False, sample = 10):
                 writer.writerow(values)
 
 def K_Tests(flares, periods, epoch, KS = True, KU = True, AD = True, sampling = True,
-            N = 10, sample_type = ['periastron'], peri_error = None):
+            N = 10, sample_type = ['periastron'], peri_error = None, output_message = True):
     '''
     Generates test statistics for different GoF tests to test if the provided
     flare epoch distribution deviates significantly from a uniform distribution.
@@ -320,69 +320,112 @@ def K_Tests(flares, periods, epoch, KS = True, KU = True, AD = True, sampling = 
     idx_counter = 0
     for index, period in enumerate(periods):
         phases = ((flares - (epoch[index] + period/2)) % period)/period
-        print(phases)
         phases = np.sort(phases)
-        if KS == True:
-            idx_counter += 1
-            D, p_KS = ks_1samp(phases, uniform.cdf, args=(0, 1))
-            K_tests.append(p_KS)
-            message_str += str(idx_counter) + ' KS\n'
-        if KU == True:
-            idx_counter += 1
-            a, p_KU = kuiper(phases, uniform.cdf, args=(0, 1))
-            K_tests.append(p_KU)
-            message_str += str(idx_counter) + ' KU\n'
-        if AD == True:
-            idx_counter += 1
-            A, p_AD = ad_test(phases, uniform(0,1), assume_sorted=True)
-            K_tests.append(p_AD)
-            message_str += str(idx_counter) + ' AD\n'
-        if sampling == True:
-            p_AD_Samp = []
-            p_KS_Samp = []
-            phase1 = phases
-            for samples in range(N):
-                if sample_type[index].lower() == 'transit':
-                    check = np.random.random()
-                    if check < 0.5:
-                        phase1 += np.random.random()
-                    elif check > 0.5:
-                        phase1 -= np.random.random()
-                if sample_type[index].lower() == 'periastron':
-                    if peri_error == None:
-                        peri_error = [0.1]
-                    if len(peri_error) == 1:
-                        phase1 += np.random.normal(scale=peri_error[0])
-                    elif len(peri_error) == 2:
-                        check = np.random.random()
-                        if check < 0.5:
-                            phase1 -= np.random.normal(scale=peri_error[0])
-                        elif check > 0.5:
-                            phase1 += np.random.normal(scale=peri_error[1])
-                
-                for idx, samps in enumerate(phase1):
-                    if phase1[idx] > 1:
-                        phase1[idx] -= 1
-                    if phase1[idx] < 0:
-                        phase1[idx] += 1
-                phase1 = np.sort(phase1)
-                A, p_ad_samp = ad_test(phase1, uniform(0,1), assume_sorted=True)
-                D, p_ks_samp = ks_1samp(phase1, uniform.cdf, args=(0, 1))
-                p_AD_Samp.append(p_ad_samp)
-                p_KS_Samp.append(p_ks_samp)
+        # print(phases)
+        # plt.hist(phases)
+        # plt.show()
+        if len(phases) > 3 and np.isnan(phases[0]) == False and sample_type[index] != 'ignore':
             if KS == True:
                 idx_counter += 1
-                K_tests.append(np.median(p_KS_Samp))
-                message_str += str(idx_counter) + ' KS Sampled\n'
+                D, p_KS = ks_1samp(phases, uniform.cdf, args=(0, 1))
+                K_tests.append(p_KS)
+                message_str += str(idx_counter) + ' KS\n'
+            if KU == True:
+                idx_counter += 1
+                a, p_KU = kuiper(phases, uniform.cdf, args=(0, 1))
+                K_tests.append(p_KU)
+                message_str += str(idx_counter) + ' KU\n'
             if AD == True:
                 idx_counter += 1
-                K_tests.append(np.median(p_AD_Samp))
-                message_str += str(idx_counter) + ' AD Sampled\n'
-        print(message_str)
-    return K_tests
+                A, p_AD = ad_test(phases, uniform(0,1), assume_sorted=True)
+                K_tests.append(p_AD)
+                message_str += str(idx_counter) + ' AD\n'
+            if sampling == True:
+                p_AD_Samp = []
+                p_KS_Samp = []
+                phase1 = phases
+                for samples in range(N):
+                    if sample_type[index].lower() == 'transit':
+                        check = np.random.random()
+                        if check < 0.5:
+                            phase1 += np.random.random()
+                        elif check > 0.5:
+                            phase1 -= np.random.random()
+                    if sample_type[index].lower() == 'periastron':
+                        if peri_error == None:
+                            peri_error = [0.1]
+                        if len(peri_error) == 1:
+                            phase1 += np.random.normal(scale=peri_error[0])
+                        elif len(peri_error) == 2:
+                            check = np.random.random()
+                            if check < 0.5:
+                                phase1 -= np.random.normal(scale=peri_error[0])
+                            elif check > 0.5:
+                                phase1 += np.random.normal(scale=peri_error[1])
+                    
+                    for idx, samps in enumerate(phase1):
+                        if phase1[idx] > 1:
+                            phase1[idx] -= 1
+                        if phase1[idx] < 0:
+                            phase1[idx] += 1
+                    phase1 = np.sort(phase1)
+                    A, p_ad_samp = ad_test(phase1, uniform(0,1), assume_sorted=True)
+                    D, p_ks_samp = ks_1samp(phase1, uniform.cdf, args=(0, 1))
+                    p_AD_Samp.append(p_ad_samp)
+                    p_KS_Samp.append(p_ks_samp)
+                if KS == True:
+                    idx_counter += 1
+                    K_tests.append(np.median(p_KS_Samp))
+                    message_str += str(idx_counter) + ' KS Sampled\n'
+                if AD == True:
+                    idx_counter += 1
+                    K_tests.append(np.median(p_AD_Samp))
+                    message_str += str(idx_counter) + ' AD Sampled\n'
+            if output_message == True:
+                print(message_str)
+            kappa, mu, TS = MLE.VM_Unbinned_likelihood(phases)
+            return K_tests, (kappa, mu, TS)
+        else:
+            return [1], [2]
 
 data = pd.read_csv("C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_Exoplanet_MCMC_Flares.csv")
+catalog = pd.read_csv("C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/Reference_Lists/Alfven_Catalog.csv")
+hosts = set(data['Host_ID'])
 
-flares = data.loc[data['Host_ID'] == 'YZCet', 'Flare_Epoch']
+for host in hosts:
+    if host != 'AUMic':
+        orb_periods = catalog.loc[catalog['Host_ID'] == host, 'pl_orbper'].values
+        periods = catalog.loc[catalog['Host_ID'] == host, 'st_rotp'].values
+        syn_per = (1/(periods) - 1/(orb_periods))**-1
 
-K_Tests(flares, [3.8888], [2457010], N=50, sample_type=['periastron'])
+        skip = 0
+        if len(periods) == 0:
+            continue
+        elif len(periods) == 1:
+            if np.isnan(periods[0]) == True:
+                continue
+        for period in periods:
+            if np.isnan(period) == True:
+                skip = 1
+        if skip == 1:
+            continue
+        planet_no = catalog.loc[catalog['Host_ID'] == host, 'pl_letter'].values
+        flares = data.loc[data['Host_ID'] == host, 'Flare_Epoch'].values
+        epoch = catalog.loc[(catalog['Host_ID'] == host), 'pl_tranmid'].values
+        peri =catalog.loc[(catalog['Host_ID'] == host), 'pl_orbtper'].values
+        sample_flag = []
+        for index, values in enumerate(peri):
+            if np.isnan(values) == True and np.isnan(epoch[index]) == True:
+               sample_flag.append("ignore")
+            if np.isnan(values) == True and np.isnan(epoch[index]) == False:
+                sample_flag.append("transit")
+                peri[index] = epoch[index]
+            else:
+                sample_flag.append("periastron")
+        k, UBL = K_Tests(flares, syn_per, peri, sample_type = sample_flag, output_message = False)
+        
+        for results in k:
+            if k == [1]:
+                continue
+            elif results < 0.9 or UBL[2] > 3:
+                print(host, results, UBL[2], len(flares), data.loc[data['Host_ID'] == host, 'Obs_Time'].values[0]/periods[0], periods[0])
