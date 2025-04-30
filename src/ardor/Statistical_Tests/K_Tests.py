@@ -29,6 +29,23 @@ def find_between( s, first, last ):
     except ValueError:
         return ""
 def K_Test_Sim_Kappa(DataFrame, output_dir, descriptor='G'):
+    '''
+    Computes KU, AD, KS tests for simulations found in SPI_Simulation.py.
+
+    Parameters
+    ----------
+    DataFrame : pd.df
+        Dataframe of the simulates flares.
+    output_dir : str
+        Directory for the output.
+    descriptor : str, optional
+        What to name the outputfile. The default is 'G'.
+
+    Returns
+    -------
+    .csv file of the output of the tests.
+
+    '''
     # interest_hosts = [['p_KU', 'p_KS', 'p_AD', 'p_KS_Samp', 'p_AD_Samp', 'N']]
     data_frame = pd.DataFrame()
     set_hosts = set(DataFrame['Host_ID'])
@@ -130,48 +147,32 @@ def K_Test_Sim_Kappa(DataFrame, output_dir, descriptor='G'):
         data_frame['p_KS_' + str(kappas) + '_G'] = KS_List[index]
     data_frame.to_csv(output_dir, index = False)
     
-def Peri_K_Test_Sampling(flares, N, error = True, peri_phases_upper = 0, peri_phases_lower = 0):
-    AD_Sample_list = []
-    KS_Sample_list = []
-    if error == True:
-        for samples in range(N):
-            sample_flares = flares
-            check = np.random.random()
-            if check > 0.5:
-                sample_flares = sample_flares + np.abs(np.random.normal(0, scale=np.abs(peri_phases_upper)))
-            elif check < 0.5:
-                sample_flares = sample_flares - np.abs(np.random.normal(0, scale=np.abs(peri_phases_lower)))
-            for index in range(len(sample_flares)):
-                if sample_flares[index] > 1:
-                    sample_flares[index] = sample_flares[index] - 1 
-                if flares[index] < 0:
-                    sample_flares[index] = sample_flares[index] + 1
-            sample_flares = np.sort(sample_flares)
-            D, p_ks_samp = ks_1samp(sample_flares, uniform.cdf, args=(0, 1))
-            A, p_ad_samp = ad_test(sample_flares, uniform(0,1), assume_sorted=True)
-            KS_Sample_list.append(p_ks_samp)
-            AD_Sample_list.append(p_ad_samp)
-    elif error == False:
-        for samples in range(N):
-            sample_flares = flares
-            check = np.random.random()
-            if check > 0.5:
-                sample_flares = sample_flares + np.abs(np.random.normal(0, scale=0.1))
-            elif check < 0.5:
-                sample_flares = sample_flares - np.abs(np.random.normal(0, scale=0.1))
-            for index in range(len(sample_flares)):
-                if sample_flares[index] > 1:
-                    sample_flares[index] = sample_flares[index] - 1 
-                if flares[index] < 0:
-                    sample_flares[index] = sample_flares[index] + 1
-            sample_flares = np.sort(sample_flares)
-            D, p_ks_samp = ks_1samp(sample_flares, uniform.cdf, args=(0, 1))
-            A, p_ad_samp = ad_test(sample_flares, uniform(0,1), assume_sorted=True)
-            KS_Sample_list.append(p_ks_samp)
-            AD_Sample_list.append(p_ad_samp)
-    return np.median(KS_Sample_list), np.median(AD_Sample_list)
     
 def K_Tests_Total(flare_df, output_dir, TOI = False, CDFs = False, sample = 10):
+    '''
+    Generates KS, AD, KU tests for output from Tier 3 of the flare detection
+    pipeline. Not meant for general use, see 'K_Tests' below.
+
+    Parameters
+    ----------
+    flare_df : pd.df
+        Array/series of phase foleded, normalized flare epochs.
+    output_dir : str
+        Output directory
+    TOI : bool, optional
+        Are you analyzing TOI or exoplanet host targets? The default is False.
+    CDFs : bool, optional
+        Whether or not to return the cumulative distribution functions of each
+        target. The default is False.
+    sample : int, optional
+        How many samples to draw when sampling different
+        starting phases for AD, KS tests. The default is 10.
+
+    Returns
+    -------
+    None.
+
+    '''
     KS_Sample_list = []
     AD_Sample_list = []
     N = sample
@@ -374,10 +375,9 @@ def K_Tests(flares, periods, epoch, KS = True, KU = True, AD = True, sampling = 
                     p_AD_Samp.append(p_ad_samp)
                     p_KS_Samp.append(p_ks_samp)
                 if KS == True:
-                    idx_counter += 1
-                    K_tests.append(np.median(p_KS_Samp))
-                    message_str += str(idx_counter) + ' KS Sampled\n'
-                if AD == True:
+                    idx_counter += 16
+                    +6
+                    
                     idx_counter += 1
                     K_tests.append(np.median(p_AD_Samp))
                     message_str += str(idx_counter) + ' AD Sampled\n'
