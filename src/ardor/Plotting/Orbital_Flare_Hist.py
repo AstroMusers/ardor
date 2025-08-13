@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # -*- coding: utf-8 -*-
 """
 Created on Fri Jan  3 12:20:14 2025
@@ -9,32 +8,127 @@ Created on Fri Jan  3 12:20:14 2025
 import numpy as np
 import matplotlib.pyplot as plt
 import ardor.Utils.Utils as UT
-import pandas as pd
 from scipy.stats import vonmises
 from matplotlib import rcParams
-from collections import namedtuple
-from matplotlib import font_manager, patches
-
+from matplotlib import font_manager
 from matplotlib.font_manager import FontProperties
 import ardor.Statistical_Tests.MLE as MLE
-for fontpath in font_manager.findSystemFonts(fontpaths=None, fontext='ttf'):
-    if 'lmroman10-regular'.lower() in fontpath.lower():
+from matplotlib.animation import FuncAnimation, PillowWriter
+for fontpath in font_manager.findSystemFonts():
+    if 'lmroman10-regular' in fontpath.lower():
         path = fontpath
-        print(path)
-for fontpath in font_manager.findSystemFonts(fontpaths=None, fontext='ttf'):
-    if 'lmroman10-italic'.lower() in fontpath.lower():
+    if 'lmroman10-italic' in fontpath.lower():
         italicpath = fontpath
-        print(italicpath)
-def orbit_pos(e,a,theta):
-    return a*(1-e**2)/(1+e*np.cos(theta+np.pi))
+
+# Register and get name
+font_manager.fontManager.addfont(path)
+font_manager.fontManager.addfont(italicpath)
+
 font = FontProperties(fname=path)
-italicfont = FontProperties(fname=italicpath)
+font_name = font.get_name()
+
+rcParams["font.family"] = font_name
 rcParams["mathtext.fontset"] = "cm"
+
+def St_Polar_Flare_Plot(
+    flare_phases,
+    a=0.02,
+    title="Title",
+    star_rad=1,
+    color_map='Reds',
+    star_teff=4000,
+    save_dir=None,
+    plot_stats=False,
+    bottom_text_list=None
+):
+    # Define thetas for PDF
+    thetas = np.linspace(-np.pi, np.pi, num=10000)
+
+    # STAR color
+    if 3000 < star_teff < 3900:
+        star_cl = 'orangered'
+    elif 3900 <= star_teff < 5200:
+        star_cl = 'goldenrod'
+    elif 5200 <= star_teff < 6000:
+        star_cl = 'yellow'
+    elif 6000 <= star_teff < 7600:
+        star_cl = 'palegoldenrod'
+    elif star_teff >= 7600:
+        star_cl = 'paleturquoise'
+    else:
+        star_cl = 'goldenrod'
+
+    star_rad = star_rad * 0.00465
+
+    # Set up polar plot
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=(4, 4))
+    ax.axis('off')
+
+    # Orbit
+    phases = np.linspace(0, 2 * np.pi, num=10000)
+    orbit = orbit_pos(0, a, phases)
+    ax.plot(phases, orbit, linestyle='dashdot', color='darkblue', linewidth=1.25, label='Phase')
+
+    # Plot flare phases
+    for index, phase in enumerate(flare_phases):
+        adj_phase = UT.range_shift(phase, 0, 1, 0, 2 * np.pi)
+        lw = 0.75 if len(flare_phases) > 30 else 1.25
+        if index == 0:
+            ax.vlines(adj_phase, ymin=0, ymax=orbit_pos(0, a, adj_phase),
+                      linewidth=lw, color='purple', linestyle='--', label='Flares')
+        else:
+            ax.vlines(adj_phase, ymin=0, ymax=orbit_pos(0, a, adj_phase),
+                      linewidth=lw, color='purple', linestyle='--')
+
+    ax.set_rlim(0, 0.15)
+    ax.set_yticks([])
+    ax.set_xticks([])
+    ax.set_title(title, fontsize=14,y=0.975)
+
+    # VM PDF example
+    loc, kappa, TS = MLE.VM_Unbinned_likelihood(flare_phases)
+    loc = UT.range_shift(loc, 0, 1, -np.pi, np.pi)
+    PDF = vonmises.pdf(thetas, loc=loc + np.pi, kappa=kappa)
+    ax.plot(thetas, (PDF / np.max(PDF)) * orbit_pos(0, a, loc + np.pi),
+            linestyle='-', color='cyan', label='VM PDF', linewidth=1)
+    ax.vlines(np.pi, ymin=0, ymax=orbit_pos(0, a, adj_phase),
+              color='black', label='Spot')
+    
+    # 2. True anomaly at transit
+    f_transit = np.pi
+    
+    # 3. Angle in polar plot:
+    theta_center = f_transit
+    
+    # 4. Edges
+    theta1 = theta_center - np.pi/2
+    theta2 = theta_center + np.pi/2
+    theta_fill = np.linspace(theta1, theta2, 500)
+    r_fill = orbit_pos(0, a, theta_fill)
+    ax.fill_between(theta_fill, 0, r_fill, color='gray', alpha=0.7, label='Spot LoS Cone')
+    ax.vlines(theta_center, ymin=0, ymax=orbit_pos(0,a,theta_center), color='black', linestyle='-', linewidth=1.0)
+    plt.legend(loc = 'upper left', handlelength = 2, ncol=2)
+    # Fill star
+    ax.fill(thetas, star_rad * np.ones(len(thetas)), zorder=4, color=star_cl)
+    # ======= DYNAMIC BOTTOM TEXT =======
+    if bottom_text_list:
+        n = len(bottom_text_list)
+        for i, text in enumerate(bottom_text_list):
+            x = 0.3 + i * 0.5 / max(n - 1, 1)
+            y = 0.15  # adjust this for spacing below the plot
+            fig.text(x, y, text, ha='center', va='center', fontsize=11)
+
+    if save_dir:
+        plt.savefig(f"{save_dir}/{title}_Polar_Hist.png", dpi=500, bbox_inches='tight')
+    plt.show()
+
+def orbit_pos(e,a,theta):
+    return a*(1-e**2)/(1+e*np.cos(theta + np.pi))
 def a_from_period(R, period):
     return (((period*24*60*60)**2*6.67e-11*(1.989e30)*(R)**(5/4))/(4*np.pi**2))**(1/3)/(1.496e11)
-def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, title = "Title", star_rad = 1, color_map = 'Reds', peri_err = None,
+def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, omega_p = 0, title = "Title", star_rad = 1, color_map = 'Reds', peri_err = None,
                      star_teff = 4000, transit = False, save_dir = None, alfven=[0.1, 0.025, 0.025], 
-                     TOI = False, emax = 0, roche = [], dynamic_lim = False, legend = False):
+                     TOI = False, emax = 0, roche = [], dynamic_lim = False, legend = False,bottom_text_list=None, alfven_bool = None):
     if alfven != None:
         alfven_guess = alfven[0]
         alfven_upper = alfven[1]
@@ -63,13 +157,11 @@ def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, title = "Title", star_ra
         if len(peri_err) == 2:
             peri_err[0] = UT.range_shift(peri_err[0], 0, 360, 0, 2*np.pi)
             peri_err[1] = UT.range_shift(peri_err[1], 0, 360, 0, 2*np.pi)
-    print(e, a, len(phases))
     orbit = orbit_pos(e,a,phases)
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'},figsize = (3.5,3.5))
     ax.axis('off')
-    print(flare_phases)
     for index, phase in enumerate(flare_phases):
-        adj_phase = UT.range_shift(phase, 0, 1, 0, 2*np.pi)
+        adj_phase = UT.range_shift(phase, 0, 1, -np.pi, np.pi)
         if index == 0:
             if len(flare_phases) > 30:
                 ax.vlines(adj_phase, ymin=0, ymax=orbit_pos(e,a,adj_phase), linewidth=0.75, color='purple', linestyle='--', label='Flares')
@@ -96,13 +188,27 @@ def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, title = "Title", star_ra
     ax.set_title(title, font=font, fontsize=14)
     loc, kappa, TS = MLE.VM_Unbinned_likelihood(flare_phases)
     loc = UT.range_shift(loc, 0,1,-np.pi, np.pi)
-    PDF = vonmises.pdf(thetas, loc=loc+np.pi, kappa=kappa)
-    ax.plot(thetas, (PDF/np.max(PDF))*orbit_pos(e,a,loc+np.pi), linestyle = '-', color='cyan', label = 'VM PDF', linewidth=1)
-    # plt.text(0.24, a*1.35, "AU", font = font)
-    # plt.text(0.375, 0.0, "a = " + str(round(a,3)) + " AU",font = font, fontsize=11,transform=ax.transAxes)
-    # plt.text(0.375, 0.0, "a = " + str(round(a,3)) + " AU",font = font, fontsize=11,transform=ax.transAxes)
-    print(loc)
+    PDF = vonmises.pdf(thetas, loc=loc, kappa=kappa)
+    ax.plot(thetas, (PDF/np.max(PDF))*orbit_pos(e,a,loc), linestyle = '-', color='cyan', label = 'VM PDF', linewidth=1)
     plt.fill(thetas, star_rad*np.ones(len(thetas)), zorder=4, c=star_cl)
+    omega_p = np.deg2rad(omega_p)
+    
+    # 2. True anomaly at transit
+    f_transit = np.pi/2 - omega_p
+    
+    # 3. Angle in polar plot:
+    theta_center = f_transit
+    
+    # 4. Edges
+    theta1 = theta_center - np.pi/2
+    theta2 = theta_center + np.pi/2
+    
+    # 5. Grid for fill
+    theta_fill = np.linspace(theta1, theta2, 500)
+    r_fill = orbit_pos(e, a, theta_fill)
+    # 6. Fill it
+    ax.fill_between(theta_fill, 0, r_fill, color='gray', alpha=0.7, label='Line-of-Sight Cone')
+    ax.vlines(theta_center, ymin=0, ymax=orbit_pos(e,a,theta_center), color='black', linestyle='-', linewidth=1.0, label = r"$t_{{mid}}$")
     if alfven != None:
         plt.fill(thetas, (alfven_guess + alfven_upper)*np.ones(len(thetas)), c = 'red',alpha = 0.1)
         plt.fill(thetas, (alfven_guess - np.abs(alfven_lower))*np.ones(len(thetas)), c = 'red', alpha = 0.2)
@@ -121,74 +227,20 @@ def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, title = "Title", star_ra
             plt.plot(thetas, roche*np.ones(len(thetas)), c = 'blue', linewidth = 0.75,linestyle='--', label = 'Dyn. Lim.')
         else:
             plt.plot(thetas, roche*np.ones(len(thetas)), c = 'green', linewidth = 0.75,linestyle='--', label = 'Roche Lim.')
+    # ======= DYNAMIC BOTTOM TEXT =======
+    if bottom_text_list:
+        n = len(bottom_text_list)
+        for i, text in enumerate(bottom_text_list):
+            x = 0.3 + i * 0.5 / max(n - 1, 1)
+            y = 0.15  # adjust this for spacing below the plot
+            fig.text(x, y, text, ha='center', va='center', fontsize=11)
     if peri_err != None and transit == False:
         if len(peri_err) == 1:
-            ax.fill_between(np.linspace(np.pi-peri_err[0], np.pi+peri_err[0]), 0 , orbit_pos(e,a,np.pi), color='black', alpha=0.5,zorder=0, label='$\delta$ Periastron')
+            ax.fill_between(np.linspace(np.pi-peri_err[0], np.pi+peri_err[0]), 0 , orbit_pos(e,a,np.pi), color='black', alpha=0.5,zorder=-1, label='$\delta$ Periastron')
         elif len(peri_err) == 2:
-            ax.fill_between(np.linspace(np.pi-np.abs(peri_err[0]), np.pi+np.abs(peri_err[1])), 0 , orbit_pos(e,a,np.pi), color='black', alpha=0.5,zorder=0, label='$\delta$ Periastron')
+            ax.fill_between(np.linspace(np.pi-np.abs(peri_err[0]), np.pi+np.abs(peri_err[1])), 0 , orbit_pos(e,a,np.pi), color='black', alpha=0.5,zorder=-1, label='$\delta$ Periastron')
     if legend == True:
-        ax.legend(handlelength = 1.5, columnspacing=1, labelspacing = .2, prop=dict(family='Serif', size=9), ncol=2, loc = 'lower center')
+        ax.legend(handlelength = 1.5, columnspacing=1, labelspacing = .2, prop=dict(family='Serif', size=9), ncol=2, loc = 'upper center')
     if save_dir != None:
         plt.savefig(save_dir + '/' + title + '_Polar_Hist.png', dpi=500, bbox_inches='tight')
         plt.show()
-
-
-
-flare_dir = "C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/All_TOI_MCMC_Flares_News.csv"
-planet_params = "C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/TOI_List.csv"
-# peri_params_dir = "C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/Reference_Lists/Arg_Peri_List_New.csv"
-flares = pd.read_csv(flare_dir)
-params = pd.read_csv(planet_params)
-# peri_params = pd.read_csv(peri_params_dir)
-# (flare_phases, e = 0.01, a = 0.065, bins = 10, title = "Title", star_rad = 1, color_map = 'Reds', peri_err = None, star_type = "G", transit = False, save_dir = None):
-
-############### HOSTS###################### 
-### TRANSIT
-# target_hosts = ['TOI-1807','TOI-1518','TOI-1452','TOI-1288','KOI-7368', 'TOI-540']
-# title_hosts = ['TOI-1807','TOI-1518','TOI-1452','TOI-1288','KOI-7368', 'TOI-540']
-### PERI
-# target_hosts = ['TOI-1062','AUMic', 'WASP-34', 'Kepler-1972', 'HD260655', 'Gl49', 'TOI-2145']
-# title_hosts = ['TOI-1062','AU Mic', 'WASP-34', 'Kepler-1972', 'HD 260655', 'Gl 49', 'TOI-2145']
-letters = ['b','b','b','b','b','b', 'b']
-
-### TOI
-target_hosts = [6276.01, 2329.01,1232.01, 723.01, 1520.01,1887.01, 5051.01, 1187.01]
-title_hosts = ['6276.01', '2329.01','1232.01', '723.01', '1520.01','1887.01', '5051.01', '1187.01']
-# letters = ['b','b','b','b','b','b', 'b','b']
-emax_list = [0.2458, 0.6459,0.82, 0.5, 0.71,0.699, 0.3, 0.626]
-a_list = [0.048, 0.0658,0.117, 0.0229, 0.0693, 0.0287, 0.0418, 0.041]
-roche_list = [0.0598, 0.023,0.0214, 0.0114, 0.01968,0.01, 0.029, 0.01533]
-for index, targets in enumerate(target_hosts[0:2]):
-    
-    ###SYSTEM PARAMS Alfven_Rad,0.13,-0.135
-    # alfven_guess = params.loc[(params['Host_ID'] == targets) & (params['pl_letter'] == letters[index]), 'Alfven_Rad'].item()
-    # alfven_upper = params.loc[(params['Host_ID'] == targets) & (params['pl_letter'] == letters[index]), '0.13'].item()
-    # alfven_lower = params.loc[(params['Host_ID'] == targets) & (params['pl_letter'] == letters[index]), '-0.135'].item()
-    # alfven = [alfven_guess, alfven_upper, alfven_lower]
-    period = params.loc[(params['Host_ID'] == targets) & (params['pl_letter'] == letters[index]), 'pl_orbper'].item()
-    # e = params.loc[(params['Host_ID'] == targets) & (params['pl_letter'] == letters[index]), 'pl_orbeccen'].item()
-    # a = params.loc[(params['Host_ID'] == targets) & (params['pl_letter'] == letters[index]), 'pl_orbsmax'].item()
-    # peri_err_l = peri_params.loc[(peri_params['Host_ID'] == targets) & (peri_params['pl_letter'] == letters[index]), 'pl_orblpererr1'].item()
-    # peri_err_u = peri_params.loc[(peri_params['Host_ID'] == targets) & (peri_params['pl_letter'] == letters[index]), 'pl_orblpererr2'].item()
-    ###STELLAR PARAMS
-    star_rad = params.loc[(params['Host_ID'] == targets) & (params['pl_letter'] == letters[index]), 'st_rad']
-    st_teff = params.loc[(params['Host_ID'] == targets) & (params['pl_letter'] == letters[index]), 'st_teff']
-    ###FLARE PHASES
-    epochs = np.array(flares.loc[flares['Host_ID'] == targets, 'Flare_Epoch'])
-    tran_mid = params.loc[(params['Host_ID'] == targets) & (params['pl_letter'] == letters[index]), 'pl_tranmid'].item()
-    # if np.isnan(tran_mid) == True:
-    #     tran_mid = peri_params.loc[(peri_params['Host_ID'] == str(targets)) & (peri_params['pl_letter'] == letters[index]), 'Comp_Epoch_Peri'].item()
-    phases = ((epochs - (float(tran_mid) + float(period))) % float(period))/float(period)
-    if index == -1:
-        continue
-        # Polar_Flare_Plot(np.array(phases),title=title_hosts[index] + ' ' + letters[index], e=e,a=a, peri_err = [peri_err_l,peri_err_u],
-        #                   star_rad=float(star_rad), star_teff=float(st_teff), transit=False, 
-        #                   save_dir="C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Publication Documents/Publication_2024/Polar_Hists"
-        #                   , alfven=alfven, legend=True)
-    else:
-        Polar_Flare_Plot(np.array(phases),title='TOI-' + title_hosts[index], e=0,a=a_list[index],peri_err = None,
-                          star_rad=float(star_rad), star_teff=float(st_teff), transit=True, roche=roche_list[index], TOI = True, emax = emax_list[index], 
-                          save_dir="C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Publication Documents/Publication_2024/Polar_Hists"
-                          , legend=False, alfven=None)
-    plt.show()
-    plt.clf()

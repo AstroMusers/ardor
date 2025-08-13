@@ -7,15 +7,12 @@ Created on Thu Jan  4 12:42:31 2024
 
 import numpy as np
 import pandas as pd
-import os
 from scipy.stats import uniform
 from scipy.stats import ks_1samp
 from skgof import ad_test
 import csv
 from itertools import zip_longest
 from astropy.stats import kuiper
-import ardor.Statistical_Tests.MLE as MLE
-from matplotlib import pyplot as plt
 font = {'family': 'serif',
         'color':  'black',
         'weight': 'normal',
@@ -272,7 +269,7 @@ def K_Tests_Total(flare_df, output_dir, TOI = False, CDFs = False, sample = 10):
                 writer.writerow(values)
 
 def K_Tests(flares, periods, epoch, KS = True, KU = True, AD = True, sampling = True,
-            N = 10, sample_type = ['periastron'], peri_error = None, output_message = True):
+            N = 10, sample_type = [1], peri_error = None, output_message = True, return_phases = False):
     '''
     Generates test statistics for different GoF tests to test if the provided
     flare epoch distribution deviates significantly from a uniform distribution.
@@ -302,9 +299,11 @@ def K_Tests(flares, periods, epoch, KS = True, KU = True, AD = True, sampling = 
         test sampled. The default is True.
     N: int
         If sampling is true, the number of samples to draw.
-    sample_type: array-like, string ('transit' or 'periastron')
-        List of whether to sample assuming a transit (uniform sampling) or assuming
-        a known argument of periastron (Gaussian).
+    sample_type: array-like, int
+        The epoch type:
+            0: The target has no constraint on any epoch.
+            1: The target has a constraint on the epoch of periastron
+            2: The target has a constraint on transit epoch, but not periastron
     peri_error: 2D array, floats
         The uncertainty in the epoch of periastron for sampling, in days.
         If symmetric, provide an array of length 1. If asymmetric, provide 
@@ -320,12 +319,11 @@ def K_Tests(flares, periods, epoch, KS = True, KU = True, AD = True, sampling = 
     message_str = 'Output Order\n'
     idx_counter = 0
     for index, period in enumerate(periods):
-        phases = ((flares - (epoch[index] + period/2)) % period)/period
+        if sample_type[index] == 0:
+            continue
+        phases = ((flares - (epoch[index])) % period)/period
         phases = np.sort(phases)
-        # print(phases)
-        # plt.hist(phases)
-        # plt.show()
-        if len(phases) > 3 and np.isnan(phases[0]) == False and sample_type[index] != 'ignore':
+        if len(phases) >= 3 and np.isnan(phases[0]) == False and sample_type[index] != 'ignore':
             if KS == True:
                 idx_counter += 1
                 D, p_KS = ks_1samp(phases, uniform.cdf, args=(0, 1))
@@ -346,13 +344,13 @@ def K_Tests(flares, periods, epoch, KS = True, KU = True, AD = True, sampling = 
                 p_KS_Samp = []
                 phase1 = phases
                 for samples in range(N):
-                    if sample_type[index].lower() == 'transit':
+                    if sample_type[index] == 2:
                         check = np.random.random()
                         if check < 0.5:
                             phase1 += np.random.random()
                         elif check > 0.5:
                             phase1 -= np.random.random()
-                    if sample_type[index].lower() == 'periastron':
+                    if sample_type[index] == 1:
                         if peri_error == None:
                             peri_error = [0.1]
                         if len(peri_error) == 1:
@@ -375,57 +373,18 @@ def K_Tests(flares, periods, epoch, KS = True, KU = True, AD = True, sampling = 
                     p_AD_Samp.append(p_ad_samp)
                     p_KS_Samp.append(p_ks_samp)
                 if KS == True:
-                    idx_counter += 16
-                    +6
-                    
+                    idx_counter += 1
+                    K_tests.append(np.median(p_KS_Samp))
+                    message_str += str(idx_counter) + ' KS Sampled\n'
+                if AD == True:
                     idx_counter += 1
                     K_tests.append(np.median(p_AD_Samp))
                     message_str += str(idx_counter) + ' AD Sampled\n'
             if output_message == True:
                 print(message_str)
-            kappa, mu, TS = MLE.VM_Unbinned_likelihood(phases)
-            return K_tests, (kappa, mu, TS)
+            if return_phases == False:
+                return K_tests
+            elif return_phases == True:
+                return K_tests
         else:
-            return [1], [2]
-
-data = pd.read_csv("C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_Exoplanet_MCMC_Flares.csv")
-catalog = pd.read_csv("C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/Reference_Lists/Alfven_Catalog.csv")
-hosts = set(data['Host_ID'])
-
-for host in hosts:
-    if host != 'AUMic':
-        orb_periods = catalog.loc[catalog['Host_ID'] == host, 'pl_orbper'].values
-        periods = catalog.loc[catalog['Host_ID'] == host, 'st_rotp'].values
-        syn_per = (1/(periods) - 1/(orb_periods))**-1
-
-        skip = 0
-        if len(periods) == 0:
-            continue
-        elif len(periods) == 1:
-            if np.isnan(periods[0]) == True:
-                continue
-        for period in periods:
-            if np.isnan(period) == True:
-                skip = 1
-        if skip == 1:
-            continue
-        planet_no = catalog.loc[catalog['Host_ID'] == host, 'pl_letter'].values
-        flares = data.loc[data['Host_ID'] == host, 'Flare_Epoch'].values
-        epoch = catalog.loc[(catalog['Host_ID'] == host), 'pl_tranmid'].values
-        peri =catalog.loc[(catalog['Host_ID'] == host), 'pl_orbtper'].values
-        sample_flag = []
-        for index, values in enumerate(peri):
-            if np.isnan(values) == True and np.isnan(epoch[index]) == True:
-               sample_flag.append("ignore")
-            if np.isnan(values) == True and np.isnan(epoch[index]) == False:
-                sample_flag.append("transit")
-                peri[index] = epoch[index]
-            else:
-                sample_flag.append("periastron")
-        k, UBL = K_Tests(flares, syn_per, peri, sample_type = sample_flag, output_message = False)
-        
-        for results in k:
-            if k == [1]:
-                continue
-            elif results < 0.9 or UBL[2] > 3:
-                print(host, results, UBL[2], len(flares), data.loc[data['Host_ID'] == host, 'Obs_Time'].values[0]/periods[0], periods[0])
+            return None, None

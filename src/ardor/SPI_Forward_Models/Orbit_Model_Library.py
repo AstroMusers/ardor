@@ -6,6 +6,11 @@ Created on Sun May 14 18:28:00 2023
 """
 
 import numpy as np
+from matplotlib import pyplot as plt
+import pandas as pd
+from astropy import constants as c
+from scipy.optimize import root_scalar
+from scipy.optimize import newton
 ##This defines the stellar parameters relevant in a magnetic star-planet induced flare.
 ##The parameters are mass (in solar masses), distance (in parsecs), luminosity
 ##(in log(L_{solar})), spectral class (O,B,A,F,G,K,M), and optional parameters are
@@ -36,7 +41,7 @@ import numpy as np
 ##a 1/4 power law with respect to eta, which is scaled to the Sun's Alfven
 ##surface of 18.8 solar radii. The Alfven surface is given in AU.
 class Star:
-    def __init__(self, mass, dist, lumin, radius=None, age=None, p_rot=None, B=None, err = False, alfven = None):
+    def __init__(self, mass, dist, radius=None, age=None, p_rot=None, B=None, err = False, alfven = None):
         """
         The `Star` class initializes with basic physical parameters found on, e.g., the Exoplanet Archive
         and generates the predicted polar magnetic field strength as well as the median Alfven surface
@@ -49,8 +54,6 @@ class Star:
             Stellar mass. In solar masses.
         dist : float
             Stellar distance. In pc.
-        lumin : float
-            Stellar luminosity. In log(solar).
         radius : float, optional
             Radius of the star. In solar radii. If not provided, approximated
             by mass/radius relation.
@@ -74,76 +77,91 @@ class Star:
         Star class object.
 
         """
-        if err == False:
-            if mass == None:
-                self.mass = radius**(1/0.8)*1.989e33
-            elif mass != None:
-                self.mass = mass
-            self.stlumin = 10**(lumin)
-            self.lumin = 10**(lumin)*3.8e26
-            if radius == None:
-                radius = mass**0.8
-                self.radius = (mass**0.8)*6.957e10 
-            self.radius = radius*6.957e10
-            self.age = age
-            self.dist = dist*3.086e18
-            self.p_rot = p_rot
-            self.windspeed = np.sqrt(6.67e-8*self.mass*1.989e33/self.radius)
-            self.brightness = self.lumin/(4*np.pi*(self.dist)**2)
-            ##Uncertainty of 0.5
-            if self.age == None:
-                self.massloss = (10**8.33)/(4.5e9**2.33)
-            elif self.age != None:
-                self.massloss = (10**8.33)/(self.age**2.33)
-            if B != None:
-                self.B = B
-            if age == None and B == None and p_rot != None:
-                self.B = 10**1.98/(p_rot**(1.32))
-            if p_rot == None and B == None and self.age != None:
-                self.B = 10**6.63/(self.age**0.655)
-            elif age != None and p_rot != None and B == None:
-                self.B = (10**1.98/(0.25*p_rot**1.32)+ 0.75*10**6.63/(age**0.655))
-            
-            if B != None and self.windspeed != None and self.massloss != None:
-                self.eta = ((self.B)**2 * (self.radius)**2)/((self.windspeed)*(self.massloss*6.306*10**25))
-            if alfven != None:
-                self.Alfven = alfven
-            else:
-                self.Alfven = self.radius*6.68459e-14*(0.3+(self.eta+0.25)**(1/4))*2.1
-            self.density = (self.mass*1.989e33)/((4/3)*np.pi*(6.957e10*self.radius)**3)
-        elif err == True:
+        if mass == None:
+            self.mass = radius**(1/0.8)*1.989e33
+        elif mass != None:
             self.mass = mass
-            self.stlumin = 10**(lumin)
-            self.lumin = 10**(lumin)*3.8e26
-            if radius == None:
-                radius = mass**0.8
-                self.radius = (mass**0.8)*6.957e10  
-            self.radius = radius*6.957e10
-            self.age = age
-            self.dist = dist*3.086e18
-            self.p_rot = p_rot
-            self.windspeed = np.sqrt(6.67e-8*self.mass*1.989e33/self.radius)
-            self.brightness = self.lumin/(4*np.pi*(self.dist)**2)
-            ##Uncertainty of 0.5
-            if self.age == None:
-                self.massloss = (10**8.33)/(4.5e9**2.33)
-            elif self.age != None:
-                self.massloss = (10**8.33)/(self.age**2.33)
-            if B != None:
-                self.B = B
-            if age == None and B == None:
-                ##Error of 0.07
-                self.B = 10**1.98/(p_rot**(np.random.normal(loc=1.32, scale = 0.14)))
-            if p_rot == None and B == None:
-                ##Error of 0.0225
-                self.B = 10**6.63/(age**(np.random.normal(loc = 0.655, scale = 0.045)))
-            if p_rot == None and age == None and B == None:
-                return 'Input age, rotational period, or B field'
-            elif age != None and p_rot != None and B == None:
-                ##Error 0.655
-                self.B = (10**1.98/(0.25*p_rot**(np.random.normal(loc=1.32, scale = 0.07))))+ 0.75*10**6.63/(age**(np.random.normal(loc = 0.655, scale = 0.0225)))
+        if radius == None:
+            radius = mass**0.8
+            self.radius = (mass**0.8)*6.957e10 
+        self.radius = radius*6.957e10
+        self.age = age
+        self.dist = dist*3.086e18
+        self.p_rot = p_rot
+        self.windspeed = np.sqrt(6.67e-8*self.mass*1.989e33/self.radius)
+        ##Uncertainty of 0.5
+        if self.age == None:
+            self.massloss = (10**8.33)/(4.5e9**2.33)
+        elif self.age != None:
+            self.massloss = (10**8.33)/(self.age**2.33)
+        if B != None:
+            self.B = B
+        if age == None and B == None and p_rot != None:
+            self.B = 10**1.98/(p_rot**(1.32))
+        if p_rot == None and B == None and self.age != None:
+            self.B = 10**6.63/(self.age**0.655)
+        elif age != None and p_rot != None and B == None:
+            self.B = (10**1.98/(0.25*p_rot**1.32)+ 0.75*10**6.63/(age**0.655))
+        
+        if self.B != None and self.windspeed != None and self.massloss != None:
             self.eta = ((self.B)**2 * (self.radius)**2)/((self.windspeed)*(self.massloss*6.306*10**25))
-            self.Alfven = self.radius*6.68459e-14*(0.29+(self.eta+0.25)**(1/4))*(np.random.normal(loc = 11, scale = 1)/5.3)
+        if alfven != None:
+            self.Alfven = alfven
+        else:
+            self.Alfven = self.radius*6.68459e-14*(0.3+(self.eta+0.25)**(1/4))*2.1
+        self.density = (self.mass*1.989e33)/((4/3)*np.pi*(6.957e10*self.radius)**3)
+        if err == True:
+            alfven_list = []
+            B_list = []
+            mass_loss_list = []
+            for values in range(5000):
+                ##Uncertainty of 0.5
+                if self.age == None:
+                    massloss_samp = (10**8.33)/(4.5e9**np.random.normal(2.33, scale=0.5))
+                    while massloss_samp < 0:
+                        massloss_samp = (10**8.33)/(4.5e9**np.random.normal(2.33, scale=0.5))
+                    mass_loss_list.append(massloss_samp)
+                elif self.age != None:
+                    massloss_samp = (10**8.33)/(self.age**np.random.normal(2.33, scale=0.5))
+                    while massloss_samp < 0:
+                        massloss_samp = (10**8.33)/(self.age**np.random.normal(2.33, scale=0.5))
+                    mass_loss_list.append(massloss_samp)
+                if age == None and B == None:
+                    ##Error of 0.07
+                    B_samp = 10**1.98/(p_rot**(np.random.normal(loc=1.32, scale = 0.14)))
+                    while B_samp < 0:
+                        B_samp = 10**1.98/(p_rot**(np.random.normal(loc=1.32, scale = 0.14)))
+                    B_list.append(B_samp)
+                if p_rot == None and B == None:
+                    ##Error of 0.0225
+                    B_samp = 10**6.63/(age**(np.random.normal(loc = 0.655, scale = 0.045)))
+                    while B_samp < 0:
+                        B_samp = 10**6.63/(age**(np.random.normal(loc = 0.655, scale = 0.045)))
+                    B_list.append(B_samp)
+                elif age != None and p_rot != None and B == None:
+                    ##Error 0.655
+                    B_samp = (10**1.98/(0.25*p_rot**(np.random.normal(loc=1.32, scale = 0.07))))+ 0.75*10**6.63/(age**(np.random.normal(loc = 0.655, scale = 0.0225)))
+                    while B_samp < 0:
+                        B_samp = (10**1.98/(0.25*p_rot**(np.random.normal(loc=1.32, scale = 0.07))))+ 0.75*10**6.63/(age**(np.random.normal(loc = 0.655, scale = 0.0225)))
+                    B_list.append(B_samp)
+                alf = self.radius*6.68459e-14*(0.29+(self.eta+0.25)**(1/4))*(np.random.normal(loc = 11, scale = 1)/5.3)
+                while alf < 0:
+                    alf = self.radius*6.68459e-14*(0.29+(self.eta+0.25)**(1/4))*(np.random.normal(loc = 11, scale = 1)/5.3)
+                alfven_list.append(alf)
+            alfven_list.sort()
+            B_list.sort()
+            mass_loss_list.sort()
+            self.alfven_median = alfven_list[2500]
+            self.alfven_lower = -np.abs(self.alfven_median - alfven_list[1600])
+            self.alfven_upper = np.abs(self.alfven_median - alfven_list[3400])
+            self.B_median = B_list[2500]
+            self.B_lower = -np.abs(self.B - B_list[1600])
+            self.B_upper = np.abs(self.B - B_list[3400])
+            self.massloss_median = mass_loss_list[2500]
+            self.massloss_lower = -np.abs(self.massloss_median - mass_loss_list[1600])
+            self.massloss_upper = np.abs(self.massloss_median - mass_loss_list[3400])
+            
+            
         
         
 ##This defines the planet. Since little is known about the parameters which
@@ -157,7 +175,7 @@ class Star:
 ##The radius is given in Jupiter radii, the semi-major axis in AU, and the
 ##magnetic field strength in Gauss. The phase related parameters are in radians.
 class Planet:
-    def __init__(self, radius, period, a, e, B, arg_periastron=0, orbit_length=100,inclination=90, star = None, compute_period = True):
+    def __init__(self, radius, period, a, e, B, arg_periastron=0, orbit_length=100,inclination=90, star = None, compute_period = False):
         '''
         The `Planet` class initializes with basic physical parameters found on, e.g., the Exoplanet Archive
         and generates the orbital geometry of a system, including orbital distances as a function of time 
@@ -389,11 +407,11 @@ def orbit_pos_v_time(period, e, a, orbit_length , phase=False, arg_periastron = 
     time_list = []
     position = []
     n = np.pi*2/period
-    while time < (period):
-        M = n*(time)
+    while time < (period - period/orbit_length):
+        M = n*(time) - np.pi*2*(arg_periastron/360)
         E = (M_newton(e, M))
         nu = true_anomaly(E,e)
-        time += 1/orbit_length
+        time += period/orbit_length
         time_list.append(time)
         position.append(elliptical_dist(a,e,nu))
     rot = int((arg_periastron/(2*np.pi))*len(time_list))
@@ -401,7 +419,7 @@ def orbit_pos_v_time(period, e, a, orbit_length , phase=False, arg_periastron = 
     if phase == True:
         return np.array(time_list)/period, np.array(position), np.array(rot_time)/period
     else:
-        return np.array(time_list), np.array(position),np.array(rot_time)
+        return np.array(time_list), np.array(position), np.array(rot_time)
 
 
 def find_nearest(array, value):
@@ -452,7 +470,7 @@ def interaction(star, planet):
     return flare_time, total_energy
 
 
-def arg_peri_to_epoch(arg, e, a, period):
+def arg_peri_to_epoch(arg, e, a, period, tran_epoch = 0, err = None):
     '''
     Computes the delay in time between the transit epoch and the epoch of peri-
     astron given the argument of periastron, eccentricity, semi-major axis,
@@ -461,7 +479,7 @@ def arg_peri_to_epoch(arg, e, a, period):
     Parameters
     ----------
     arg : float
-        Argument of periastron, in degrees. The arguement of ascending node is 
+        Argument of periastron, in degrees. The argument of ascending node is 
         when the planet is at quadrature, with the planet approaching the observer.
     transit_epoch : float
         Transit epoch, in BJD.
@@ -479,95 +497,255 @@ def arg_peri_to_epoch(arg, e, a, period):
         Returns in days. 
 
     '''
+    err[0] = np.abs(err[0])
+    err[1] = np.abs(err[1])
     if e == 0 or np.isnan(e) == True:
         print('No argument of periastron!')
-    else:
+        return
+    if  np.isnan(err[0]) == True or np.isnan(err[1]) == True:
+        err[0] = 0.2*arg 
+        err[1] = -0.2*arg
+    if err == None:
         arg_theta = (arg/360)*2*np.pi
-        time, position = orbit_pos_v_time(period, e, a, orbit_length=200, phase=True)
+        time, position, rot = orbit_pos_v_time(period, e, a, orbit_length=75, phase=False)
         omegas = np.linspace(0, 2*np.pi, num=len(time))
         orbit = a*(1-e**2)/(1+e*np.cos(omegas-arg_theta))
         transit_theta = np.pi/2
         transit_distance = orbit[find_nearest(omegas, transit_theta)]
         if arg >= 90 and arg < 270:
-            transit_time = time[find_nearest(position[:int(len(position)/2)], transit_distance)]
+            transit_time = time[find_nearest(position[:int(len(position)/2)], transit_distance)] - period/2
         else:
-            transit_time = time[find_nearest(position[int(len(position)/2):], transit_distance) + int(len(position)/2)]
+            transit_time = time[find_nearest(position[int(len(position)/2):], transit_distance) + int(len(position)/2)] - period/2
         delta_epoch = transit_time
-        return delta_epoch
-    
-    
-def transit_phase_to_peri_shift(arg, e, a, period,num=20, larg = 0, uarg = 0):
+        return delta_epoch + tran_epoch
+    else:
+        err[0] = arg - err[0]
+        if err[0] < 0:
+            err[0] += 360
+        err[1] = arg + err[1]
+        if err[1] > 360:
+            err[1] -= 360
+        err.insert(0, arg)
+        output = []
+        for args in err:
+            arg_theta = (args/360)*2*np.pi
+            time, position, rot = orbit_pos_v_time(period, e, a, orbit_length=75, phase=False)
+            omegas = np.linspace(0, 2*np.pi, num=len(time))
+            orbit = a*(1-e**2)/(1+e*np.cos(omegas-arg_theta))
+            transit_theta = np.pi/2
+            transit_distance = orbit[find_nearest(omegas, transit_theta)]
+            if args >= 90 and args < 270:
+                transit_time = time[find_nearest(position[:int(len(position)/2)], transit_distance)] - period/2
+            else:
+                transit_time = time[find_nearest(position[int(len(position)/2):], transit_distance) + int(len(position)/2)] - period/2
+            delta_epoch = transit_time
+            output.append(delta_epoch)
+        if output[2] < output[0]:
+             output[2] += period
+        if output[1] > output[0]:
+            output[1] -= period
+        output[1] = -np.abs(output[0] - output[1])
+        output[2] = np.abs(output[0] - output[2])
+        output[0] += tran_epoch
+        return output[0], output[1], output[2]
+
+
+
+def kepler_E(M, e):
+    def func(E):
+        return E - e * np.sin(E) - M
+    sol = root_scalar(func, bracket=[0, 2*np.pi], method='brentq')
+    return sol.root
+
+def mean_anomaly(t, P, T_p):
+    n = 2 * np.pi / P
+    return (n * (t - T_p)) % (2 * np.pi)
+
+def r_orbit(a, e, f):
+    return a * (1 - e ** 2) / (1 + e * np.cos(f))
+
+def sky_proj_sep(a, e, i, omega, f):
+    r = r_orbit(a, e, f)
+    z = np.sin(omega + f) * np.sin(i)
+    b = r * np.sqrt(1 - z ** 2)
+    return b
+
+def secondary_eclipse_true_anomaly_range_exact(
+    a, e, i_deg, omega_deg, R_star, P, T_t
+):
+    i = np.radians(i_deg)
+    omega = np.radians(omega_deg)
+
+    # Superior conjunction: omega + f = pi/2
+    f_sec = np.pi/2 - omega
+    E_sec = 2 * np.arctan2(
+        np.sqrt(1 - e) * np.sin(f_sec/2),
+        np.sqrt(1 + e) * np.cos(f_sec/2)
+    )
+    M_sec = E_sec - e * np.sin(E_sec)
+    n = 2 * np.pi / P
+    T_p = transit_to_periastron_epoch(P, e, omega_deg, T_t)
+    t_sec = T_p + M_sec / n
+
+    # Check minimum impact parameter
+    r_sec = r_orbit(a, e, f_sec)
+    min_sep = r_sec * np.cos(i)
+    if abs(min_sep) > R_star:
+        raise ValueError("No eclipse: minimum separation exceeds star radius.")
+
+    def b_diff(t):
+        M = mean_anomaly(t, P, T_p)
+        E = kepler_E(M, e)
+        f = true_anomaly(E, e)
+        return sky_proj_sep(a, e, i, omega, f) - R_star
+
+    # Scan wide time window
+    t_span = np.linspace(t_sec - 0.05 * P, t_sec + 0.05 * P, 1000)
+    b_vals = np.array([b_diff(t) for t in t_span])
+
+    signs = np.sign(b_vals)
+    sign_changes = np.where(np.diff(signs) != 0)[0]
+
+    if len(sign_changes) < 2:
+        raise RuntimeError("Could not find ingress/egress in time window.")
+
+    idx1 = sign_changes[0]
+    idx2 = sign_changes[-1]
+
+    t_ingress = root_scalar(b_diff, bracket=[t_span[idx1], t_span[idx1 + 1]]).root
+    t_egress = root_scalar(b_diff, bracket=[t_span[idx2], t_span[idx2 + 1]]).root
+
+    # Convert back to true anomaly
+    M_in = mean_anomaly(t_ingress, P, T_p)
+    E_in = kepler_E(M_in, e)
+    f_in = true_anomaly(E_in, e)
+
+    M_eg = mean_anomaly(t_egress, P, T_p)
+    E_eg = kepler_E(M_eg, e)
+    f_eg = true_anomaly(E_eg, e)
+
+    return f_in, f_eg
+
+
+def Estimate_Alfven_Params(NEA_csv_directory, pl_B = 100):
     '''
-    Takes in the argument of periastron, eccentricity, semi-major axis, and
-    period, and returns the shift in normalized phase (0,1) from the transit 
-    phase. The transit phase is assumed to be at 0.5. It can also take in
-    lower and upper uncertainties of the argument of periastron and return
-    the lower and upper uncertainty in the phase shift.
-    
-    This is computed by comparing two orbital equations:
-        - The first computes the instantaneous separation of the planet
-        with respect to true anomaly. 
-        - The second computes the instantanous separation of the plnaet
-        with respect to time.
-    To find the phase shift given the argument of periastron (true anomaly),
-    we compute the two equations both temporaly and angularly. Based on the
-    solution to the angular equation given the true anomaly, we match the 
-    temporal solution at the same instantanous separation and find the phase
-    shift in time that leads to the same separation solution.
+    Takes in a NASA Exoplanet Archive culumative planetary systems list with
+    the following columns downloaded, with uncertainties if applicable:
+        - Planet Name
+        - Host Name
+        - Planet Letter
+        - Orbital Period (days)
+        - Orbit Semi-Major Axis (AU)
+        - Planet Radius (Jup. Rad.)
+        - Time of Conjunction (days, BJD)
+        - Epoch of Periastron (days, BJD)
+        - Argument of Periastron (degrees)
+        - Stellar Effective Temperature (K)
+        - Stellar Radius (Solar Rad)
+        - Stellar Age (Gyr)
+        - Stellar Rotational Period (days)
+    with uncertainties provided. This function will estimate the following
+    parameters:
+        - Mass loss rate (Mdot) (Solar Mass/Year) +/- Uncertainty
+        - Terminal Wind Speed (km/s) +/- Uncertainty
+        - Expected Energy, Amplitude, and Duration of induced flares
+          from Lanza (2018) of inactive main sequence stars
+        - Alfven Radius (AU) +/- Uncertainty
+        - Distance of Periastron (AU) +/- Uncertainty
+        - Probability the distance of periastron in sub-Alfvenic
+        - Epoch Flag (0 = no epochs, 1 = periastron epoch, 2 = only transit)
+        - Computed periastron epoch if given only transit epoch and argument
+          of periastron
+
     Parameters
     ----------
-    arg : float
-        Argument of periastron, in degrees. The arguement of ascending node is 
-        when the planet is at quadrature, with the planet approaching the observer.
-    transit_epoch : float
-        Transit epoch, in BJD.
-    e : float
-        Orbital eccentricity.
-    a : float
-        Semi-major axis, in AU.
-    period : float
-        Orbital period, in days.
-        DESCRIPTION.
-    num : int, optional
-        The number of true anomalies to use to compute the temporal
-        grid. The default is 20, evenly spaced between 0 and 360.
-    larg : float, optional
-        Lower uncertainty of omega, in degrees. The default is 0.
-    uarg : float, optional
-        Upper uncertainty of omega, in degrees. The default is 0.
-
+    NEA_List : .csv
+    Remove header before using!
     Returns
     -------
-    cent_shift : float
-        Shift in phase from transit phase to periastron phase.
-    lshift : float
-        Lower error shift in phase.
-    ushift : float
-        Upper error shift in phase.
+    pandas dataframe with the above estimated parameters added
 
     '''
-    lower_arg = arg - larg
-    upper_arg = arg+ uarg
-    if lower_arg < 0:
-        lower_arg += 1
-    if lower_arg > 1:
-        lower_arg -= 1
-    if upper_arg < 0:
-        upper_arg += 1
-    if upper_arg > 1:
-        upper_arg -= 1
-    if lower_arg > upper_arg:
-        lower_arg, upper_arg = upper_arg, lower_arg
-    omegas = np.linspace(lower_arg, upper_arg, num =num)
-    shift = []
-    for omega in omegas:
-        a = arg_peri_to_epoch(omega, e, a, period, larg = larg, uarg = uarg)
-        shift.append(a)
-    cent_shift = shift[find_nearest(omegas, arg)]
-    lower_shift = shift[find_nearest(omegas, lower_arg)]
-    upper_shift = shift[find_nearest(omegas, upper_arg)]
-    if cent_shift > 1:
-        cent_shift -= 1
-    lshift = np.abs(lower_shift-cent_shift)
-    ushift = np.abs(cent_shift - upper_shift)
-    return cent_shift, lshift, ushift
+    ##Count the number of header rows to skip when importing
+    count = 0
+    with open(NEA_csv_directory, 'r') as file:
+        # Read each line in the fil
+        for line in file:
+            if line[0] == '#':
+                count += 1
+    planets = pd.read_csv(NEA_csv_directory, skiprows=count)
+    peri_epoch = []
+    peri_epoch_lower = []
+    peri_epoch_upper = []
+    for idx, planet in enumerate(planets['pl_name']):
+        # Compute periastron epoch if not known
+        if np.isnan(planets['pl_orbtper'].iloc[idx]) == True and np.isnan(planets['pl_tranmid'].iloc[idx]) == False and np.isnan(planets['pl_orblper'].iloc[idx]) == False and np.isnan(planets['pl_orbeccen'].iloc[idx]) == False and planets['pl_orbeccen'].iloc[idx] != 0 and planets['pl_orbper'].iloc[idx] < 100:
+            arg_peri, arg_peri_lower, arg_peri_upper = arg_peri_to_epoch(planets['pl_orblper'].iloc[idx], planets['pl_orbeccen'].iloc[idx], planets['pl_orbsmax'].iloc[idx], planets['pl_orbper'].iloc[idx], tran_epoch = 
+                              planets['pl_tranmid'].iloc[idx], err = [planets['pl_orblpererr2'].iloc[idx], planets['pl_orblpererr1'].iloc[idx]])
+            peri_epoch.append(arg_peri)
+            peri_epoch_lower.append(arg_peri_lower)
+            peri_epoch_upper.append(arg_peri_upper)
+        elif np.isnan(planets['pl_orbtper'].iloc[idx]) == False:
+            peri_epoch.append(planets['pl_orbtper'].iloc[idx])
+            peri_epoch_lower.append(planets['pl_orbtpererr2'].iloc[idx])
+            peri_epoch_upper.append(planets['pl_orbtpererr1'].iloc[idx])
+        else:
+            peri_epoch.append(np.nan)
+            peri_epoch_lower.append(np.nan)
+            peri_epoch_upper.append(np.nan)
+
+
+def transit_to_periastron_epoch(P, e, omega_deg, T0):
+    """
+    Compute the time of periastron passage given the transit epoch.
+    
+    Parameters:
+        P : float
+            Orbital period (same units as T0).
+        e : float
+            Orbital eccentricity.
+        omega_deg : float
+            Argument of periastron in degrees (star's frame).
+        T0 : float
+            Transit epoch.
+            
+    Returns:
+        Tp : float
+            Periastron epoch (same units as T0).
+    """
+    # Convert to radians
+    omega = np.radians(omega_deg)
+    f_transit = np.pi/2 - (np.pi + omega)
+    E = 2 * np.arctan(np.sqrt((1-e)/(1+e))*np.tan(f_transit/2))
+    Tp = (P/(2*np.pi))*(E-e*np.sin(E))
+    
+    return Tp
+
+
+
+def time_to_true_anomaly(t, P, e, T0):
+    """
+    Convert time to true anomaly.
+
+    Parameters:
+        t : float or array, time(s)
+        P : float, orbital period
+        e : float, eccentricity
+        T0 : float, time of periastron passage
+
+    Returns:
+        nu : true anomaly in radians
+    """
+    M = 2 * np.pi / P * (t - T0)
+
+    # Solve Kepler's equation for E numerically
+    def kepler(E, M):
+        return E - e * np.sin(E) - M
+
+    E_sol = np.array([newton(kepler, M_i, args=(M_i,)) for M_i in np.atleast_1d(M)])
+
+    # Convert E to nu
+    nu = 2 * np.arctan2(np.sqrt(1 + e) * np.sin(E_sol / 2), np.sqrt(1 - e) * np.cos(E_sol / 2))
+
+    return nu
+

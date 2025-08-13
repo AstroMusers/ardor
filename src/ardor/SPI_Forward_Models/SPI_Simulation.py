@@ -9,12 +9,10 @@ import ardor.Flares.Flare as Flare
 import ardor.Flares.aflare as aflare
 import numpy as np
 from scipy.integrate import simpson
-from scipy.stats import uniform
 import warnings
-import ardor.SPI_Forward_Models.Orbit_Model_Library as OML
+# import ardor.SPI_Forward_Models.Orbit_Model_Library as OML
 from scipy.stats import vonmises
 import ardor.Utils.Utils as UT
-from scipy.integrate import simpson
 warnings.filterwarnings("ignore", category=DeprecationWarning)  
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -63,7 +61,6 @@ def find_nearest(array, value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
     return idx
-
 
 def SPI_kappa_flare_injection(light_curve, kappa, loc, pl_period, sp_type = 'M', flare_type='Flaring', fast=False, theta_param = 0, phi_param = 0):
     location_list = []

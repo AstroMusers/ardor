@@ -7,8 +7,7 @@ Created on Fri Oct 25 10:34:09 2024
 import pandas as pd
 import numpy as np
 import warnings
-import os
-import ardor.Flares.Flare as Flare
+import math
 warnings.filterwarnings("ignore")
 def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[], output_dir = None, specifier_column = None):
     '''
@@ -90,28 +89,137 @@ def find_nearest(array, value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
     return idx
+
+def asymmetric_sample(value, upper, lower):
+    upper = np.abs(upper)
+    lower = np.abs(lower)
+    check = np.random.random()
+    if check > 0.5:
+        change = np.abs(np.random.normal(loc = 0, scale = upper))
+        sample = check + change
+    elif check <= 0.5:
+        change = np.abs(np.random.normal(loc = 0, scale = lower))
+        sample = check - change
+    return sample
+
+def df_return(df, host, columns, planet = 'b'):
+    '''
+    Return entries in a column based on host name.
+
+    Parameters
+    ----------
+    host : str
+        Name of host.
+    column : str
+        The columns you want to search.
+
+    Returns
+    -------
+    filtered dataframe
+
+    '''
+    if len(columns) == 1:
+        return df.loc[(df['Host_ID'] == host) & (df['pl_letter'] == planet), columns].to_numpy()
+    elif len(columns) > 1:
+        column_to_return = []
+        for column in columns:
+            column_to_return.append(df.loc[(df['Host_ID'] == host) & (df['pl_letter'] == planet), column].to_numpy())
+        return column_to_return
+
+def transfer_columns_between_files(
+    file_a_path,
+    file_b_path,
+    identifier_column,
+    columns_to_transfer,
+    output_file_path='file_b_updated.csv'
+):
+    """
+    Transfers specified columns from File A to File B by matching on an identifier column.
+
+    Args:
+        file_a_path (str): Path to the source file (File A).
+        file_b_path (str): Path to the destination file (File B).
+        identifier_column (str): The column name used to match rows.
+        columns_to_transfer (list of str): List of column names to transfer from A to B.
+        output_file_path (str): Path to save the updated File B.
+
+    Returns:
+        pd.DataFrame: The updated DataFrame.
+    """
+    # Load files
+    df_a = pd.read_csv(file_a_path)
+    df_b = pd.read_csv(file_b_path)
+
+    df_merged = df_b.copy()
+
+    for col in columns_to_transfer:
+        if col in df_b.columns:
+            # Merge with suffix to avoid conflict
+            temp = df_a[[identifier_column, col]]
+            df_merged = df_merged.merge(
+                temp,
+                on=identifier_column,
+                how='left',
+                suffixes=('', '_from_A')
+            )
+            # Overwrite B's column with A's data
+            df_merged[col] = df_merged[f'{col}_from_A']
+            df_merged = df_merged.drop(columns=[f'{col}_from_A'])
+        else:
+            # Merge directly
+            df_merged = df_merged.merge(
+                df_a[[identifier_column, col]],
+                on=identifier_column,
+                how='left'
+            )
+
+    # Save result
+    df_merged.to_csv(output_file_path, index=False)
+
+    print(f'✅ Data transferred. Saved to {output_file_path}')
+    return df_merged
+
+def round_to_sig_figs(number, sig_figs):
+    if number == 0:
+        return 0.0
     
-# source_file = "C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Alfven_Parameters/Alfven_Catalog.csv"
-# output_file = "C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/All_TOI_MCMC_Flares.csv"
-# data = pd.read_csv(output_file)
-# hosts = set(data['Host_ID'])
-# folders  = os.listdir('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/TOIs/')
-# output_list = []
-# for host in hosts:
-#     obs_time = 0
-#     count = 0
-#     fast_count = 0
-#     for folder in folders:
-#         if folder == str(host):
-#             files = os.listdir("C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/TOIs/" + folder)
-#             for file in files:
-#                 if file.endswith('s_lc.fits'):
-#                     count += 1
-#             obs_time += (count)*26
-#             output_list.append(obs_time)
-# output_list = np.array(output_list)
-# print(np.mean(output_list))
-# data['Obs_Time'] = output_list
-# data.to_csv('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_TOI_MCMC_Flares_New.csv')
-                
-# Data_Transfer(source_file, output_file, 'Host_ID', column_headers = ["st_met", "st_age", "st_rotp"], output_dir="C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/New_file.csv", specifier_column='pl_letter')
+    # Determine the magnitude
+    magnitude = int(math.floor(math.log10(abs(number))))
+    
+    # Calculate the scaling factor
+    factor = 10**(sig_figs - 1 - magnitude)
+    
+    # Round and scale back
+    rounded_number = round(number * factor) / factor
+    return rounded_number
+
+def find_absolute_minimum_2d(arr):
+    if not arr or not arr[0]:  # Handle empty or malformed arrays
+        return None
+
+    min_value = arr[0][0]  # Initialize with the first element
+
+    for row in arr:
+        for element in row:
+            if element < min_value:
+                min_value = element
+    return min_value
+
+def find_absolute_maximum_2d(arr):
+    if not arr or not arr[0]:  # Handle empty or malformed arrays
+        return None
+
+    max_value = arr[0][0]  # Initialize with the first element
+
+    for row in arr:
+        for element in row:
+            if element > max_value:
+                max_value = element
+    return max_value
+
+def boudnary_conditions(val, lower, upper):
+    if val < lower:
+        val += upper
+    if val > upper:
+        val -= upper
+    return val

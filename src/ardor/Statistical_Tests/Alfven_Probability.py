@@ -36,9 +36,3 @@ def sampler(value1, plus1, minus1, value2, plus2, minus2):
         elif value_1_samp > value_2_samp:
             count += 0
     return count/10000
-probability_list = []
-for index, values in enumerate(r_close):
-    probability_list.append(sampler(r_close[index], r_close_p[index], r_close_m[index], alfven[index], alfven_p[index], alfven_m[index]))
-
-data['P(rp < RA)'] = probability_list
-data.to_csv('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Alfven_Parameters/Alfven_Catalog_3.csv')
