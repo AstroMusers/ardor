@@ -232,15 +232,15 @@ class Planet:
         self.inclination = inclination*0.0174533
         self.periastron = None
         self.periastron_time = None
-        self.time, self.position, self.rot_time = orbit_pos_v_time(self.period, self.e, self.a, orbit_length = self.orbit_length, phase=False, arg_periastron=arg_periastron)
+        self.time, self.position= orbit_pos_v_time(self.period, self.e, self.a, orbit_length = self.orbit_length, phase=False, arg_periastron=arg_periastron)
         self.phase = (self.time/self.period)*np.pi*2
         self.orbit = a*(1-e**2)/(1+e*np.cos(self.phase))
         self.magnetosphere = []
-        if star != None:
-            for dist in self.position:
-                self.magnetosphere.append(2*(2*1.16)**(1/3)*(self.B/(star.B*(3.4*star.radius/(dist*1.496e+13))**2))*(self.radius/7.149e9))
-            self.v = np.sqrt(6.67e-8*star.mass*1.989e+33*(2/(self.position*1.496e+13)-1/(self.a*1.496e+13)))/(1e5)
-            self.magnetosphere = np.array(self.magnetosphere)
+        # if star != None:
+        #     for dist in self.position:
+        #         self.magnetosphere.append(2*(2*1.16)**(1/3)*(self.B/(star.B*(3.4*star.radius/(dist*1.496e+13))**2))*(self.radius/7.149e9))
+        #     self.v = np.sqrt(6.67e-8*star.mass*1.989e+33*(2/(self.position*1.496e+13)-1/(self.a*1.496e+13)))/(1e5)
+        #     self.magnetosphere = np.array(self.magnetosphere)
         
 
         
@@ -414,12 +414,10 @@ def orbit_pos_v_time(period, e, a, orbit_length , phase=False, arg_periastron = 
         time += period/orbit_length
         time_list.append(time)
         position.append(elliptical_dist(a,e,nu))
-    rot = int((arg_periastron/(2*np.pi))*len(time_list))
-    rot_time = sol(time_list, rot)
     if phase == True:
-        return np.array(time_list)/period, np.array(position), np.array(rot_time)/period
+        return np.array(time_list)/period, np.array(position)
     else:
-        return np.array(time_list), np.array(position), np.array(rot_time)
+        return np.array(time_list), np.array(position)
 
 
 def find_nearest(array, value):
@@ -571,7 +569,7 @@ def sky_proj_sep(a, e, i, omega, f):
     return b
 
 def secondary_eclipse_true_anomaly_range_exact(
-    a, e, i_deg, omega_deg, R_star, P, T_t
+    a, e, i_deg, omega_deg, R_star, P
 ):
     i = np.radians(i_deg)
     omega = np.radians(omega_deg)
@@ -584,7 +582,7 @@ def secondary_eclipse_true_anomaly_range_exact(
     )
     M_sec = E_sec - e * np.sin(E_sec)
     n = 2 * np.pi / P
-    T_p = transit_to_periastron_epoch(P, e, omega_deg, T_t)
+    T_p = transit_to_periastron_epoch(P, e, omega_deg)
     t_sec = T_p + M_sec / n
 
     # Check minimum impact parameter
@@ -695,7 +693,7 @@ def Estimate_Alfven_Params(NEA_csv_directory, pl_B = 100):
             peri_epoch_upper.append(np.nan)
 
 
-def transit_to_periastron_epoch(P, e, omega_deg, T0):
+def transit_to_periastron_epoch(P, e, omega_deg):
     """
     Compute the time of periastron passage given the transit epoch.
     

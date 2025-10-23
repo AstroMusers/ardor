@@ -6,16 +6,12 @@ Created on Wed Dec 18 15:29:39 2024
 
 import ardor.SPI_Forward_Models.SPI_Simulation as SPI
 import ardor.SPI_Forward_Models.Orbit_Model_Library as OML
-import ardor.Flares.Flare as Flare
 import ardor.Utils.Utils as U
-import ardor.Statistical_Tests.K_Tests as K
-import ardor.Plotting.Orbital_Flare_Hist as Plot
 from scipy.interpolate import interp1d
-from scipy.optimize import basinhopping, minimize
-from scipy.stats import vonmises, uniform, norm
+from scipy.optimize import minimize
+from scipy.stats import vonmises, uniform
 from scipy.integrate import simpson
 from matplotlib import pyplot as plt
-from astropy.stats import kuiper
 from matplotlib.animation import FuncAnimation, PillowWriter
 import numpy as np
 import pandas as pd
@@ -88,7 +84,7 @@ def VM_Unbinned_likelihood(flares, rad = False):
             TS = 2*(null - results.fun)
             return location, kappa, np.sqrt(TS)
     else:
-        return None
+        return 0, 0, 0
 def Cubic_Unbinned_likelihood(flares,e,a,period):
     flares = U.range_shift(flares, 0, 1, 0, 2*np.pi)
     results = minimize(cubic_likelihood, ([0, 0]), args = (flares,e, a, period), bounds = [(0, 2*np.pi), (0,1e4)], tol=1e-8)
@@ -233,7 +229,8 @@ def UBL_Sim_Kappa(DataFrame, output_dir, star=''):
         data_frame[str(star) + "TS_{VM}_" + str(kappas)] = TS_list[index]
     data_frame.to_csv(output_dir, index = False)
 
-def SPI_Metric(period, e, a, phases, arg_periastron, Rst, t_tran = 0, transit = False, los_factor = 1):
+def SPI_Metric(period, e, a, phases, arg_periastron, Rst, t_tran = 0, transit = False, los_factor = 1, save_dir=None,
+               plot = False):
     '''
     Returns an SPI metric for the provided orbit and PDF of the SPI model for
     induced flares.
@@ -255,23 +252,30 @@ def SPI_Metric(period, e, a, phases, arg_periastron, Rst, t_tran = 0, transit = 
     Rst : float
         Radius of the star, in solar radii
     los_factor : float
-        Factor in which you want to blind the metric to flares occuring when
-        the interaction is presumably out of line-of-sight
+        The line-of-sight factor for transiting planets when it is 
+        at superior conjunction. Adds a constant value to the line-of-sight
+        cone on either side of eclipse ingress and egress.
     Returns
     -------
-    log(SPI_Metric): large positive values indicate evidence for SPI
+    SPI_Metric: Positive values indicate the empirical PDF supports SPIs. 
+    Negative values indicate the empirical PDF goes against the SPI model.
+    A result of 0 indicates the same evidence as uniform flaring.
 
     '''
+    phases = U.boundary_conditions(phases, 0, 1)
     Rst = Rst*0.00465047
-    lower,upper = OML.secondary_eclipse_true_anomaly_range_exact(a, e, 90, arg_periastron, Rst, period, t_tran)
+    arg_periastron = U.boundary_conditions(arg_periastron + 180, 0, 360)
+    if transit == True:
+        lower,upper = OML.secondary_eclipse_true_anomaly_range_exact(a, e, 90, arg_periastron+ 180, Rst, period)
+        lower = U.range_shift(lower, 0, 2*np.pi, 0, 360)
+        upper = U.range_shift(upper, 0, 2*np.pi, 0, 360)
     rad_phases= U.range_shift(phases, 0,1,-np.pi,np.pi)
     rad_loc, kappa, TS = VM_Unbinned_likelihood(rad_phases, rad=True)
-
-    PDF = vonmises.pdf(np.linspace(-np.pi,np.pi,num=2000), kappa = kappa, loc = rad_loc)
+    PDF = vonmises.pdf(np.linspace(-np.pi,np.pi,num=2000), kappa = kappa, loc =rad_loc )
     
     PDF_phase = U.range_shift(np.linspace(-np.pi,np.pi,num=2000), -np.pi,np.pi,0,1)
-    phase, dist, rot = OML.orbit_pos_v_time(period, e, a, len(PDF), phase = True, 
-                                 arg_periastron=0)
+    phase, dist = OML.orbit_pos_v_time(period, e, a, len(PDF), phase = True, 
+                                 arg_periastron=180)
     # print("Results of KU Test on Fitted Dist: ", KS[1])
     # print("Results of the KU test against the uniform CDF: ", KU_test[1])
     # print("Results of the TS for the UBL fit: ", np.sqrt(TS))
@@ -282,35 +286,42 @@ def SPI_Metric(period, e, a, phases, arg_periastron, Rst, t_tran = 0, transit = 
     
     norm_orbit = (dist)**-3
     if transit == True:
-        print(lower, upper)
         for idx, values in enumerate(phase):
-            a = U.boudnary_conditions(((lower - los_factor*(upper-lower)/2)/(2*np.pi)), 0, 1)
-            b = U.boudnary_conditions(((upper+los_factor*(upper-lower)/2)/(2*np.pi)), 0, 1)
+            
+            a = U.boundary_conditions(U.range_shift(lower - los_factor, 0, 360, 0, 1), 0, 1)
+            
+            b = U.boundary_conditions(U.range_shift(upper + los_factor, 0, 360, 0, 1), 0, 1)
             if a < b:
                 if values > a and values < b:
                     norm_orbit[idx] = 0
             elif b < a:
                 if values < b or values > a:
                     norm_orbit[idx] = 0
-    # plt.axvline(Flare.phase_folder(t_tran, period, 0))
     normalized = norm_orbit/simpson(norm_orbit, x=phase)
-    fig, ax = plt.subplots(figsize=(4,4))
-    ax.plot(phase, normalized*PDF, label = r'$P(r_{{norm}}|VM)$')
-    ax.plot(phase, normalized, label='$r_{norm}$')
-    ax.plot(phase, PDF, label = 'VM PDF')
-    ax.set_xlabel("Norm. Phase")
-    ax.set_ylabel("Density")
-    ax.set_ylim(0.0, 6)
-    ax.vlines(U.range_shift(rad_loc, -np.pi, np.pi, 0, 1), ymin=0, ymax=10, alpha=0.6, linestyle='--', label=r'$\kappa$')
-    # plt.hist(U.range_shift(rad_phases, -np.pi,np.pi,0,1), density=True, bins=15, label = 'Flare Density')
-    ax.legend(loc='upper right')
     ones = np.ones(len(PDF))
     SPI_Metric = simpson((PDF * (normalized)), x = phase)
-    b = simpson((PDF * (ones)), x = phase)
-    beta = SPI_Metric - b
-    ax.text(0.03, 5.5, fr"$\beta_{{SPI}}=${beta:.3f}", fontsize=14)
-    plt.show()
-    return SPI_Metric - b
+    int_b = simpson((PDF * (ones)), x = phase)
+    beta = SPI_Metric - int_b
+    if plot == True:
+        fig, ax = plt.subplots(figsize=(4,4))
+        ax.hist(phases, bins=np.linspace(0, 1, num=12),
+                density=True,alpha=0.5, label='Flares', hatch='//', edgecolor='black', color='grey')
+        ax.plot(phase, normalized*PDF, label = r'$P\, (r_{\text{norm}}|VM)$')
+        ax.plot(phase, normalized, label=r'$r_{\text{norm}}$')
+        ax.plot(phase, PDF, label = 'VM PDF')
+        ax.set_xlabel("Norm. Phase")
+        ax.set_ylabel("Density")
+        ax.set_ylim(0.0, 3)
+        if transit == True:
+            ax.fill_between([a,b], y1=4, alpha=0.25, color='red', label='LoS')
+        # ax.vlines(U.range_shift(rad_loc, -np.pi, np.pi, 0, 1), ymin=0, ymax=10, alpha=0.6, linestyle='--', label=r'$\kappa$')
+        ax.legend(loc='upper right', fontsize=9, ncol=2, handlelength=0.5, columnspacing=0.6)
+        plt.tight_layout()
+        ax.text(0.65, 2, fr"$\beta_{{SPI}}=${beta:.3f}", fontsize=14)
+        if save_dir is not None:
+            plt.savefig(save_dir, dpi=400)
+        plt.show()
+    return beta
 
 def create_animated_plot(functions, variables, period, e, a, phases, omega, Rst, gif_name='animation.gif'):
     """
@@ -356,3 +367,20 @@ def create_animated_plot(functions, variables, period, e, a, phases, omega, Rst,
     print(f"Saved animation to {gif_name}")
 
     plt.close(fig)
+    
+def VM_Baseline(data, rate, kappa, mu, confidence, samples = 100):
+    data = U.range_shift(data, 0, 1, -np.pi, np.pi)
+    mu = U.range_shift(mu, 0, 1, -np.pi, np.pi)
+    result = VM_Unbinned_likelihood(data, rad = True)
+    rv = vonmises(kappa, loc=mu)
+    times_list = []
+    for sample in range(samples):
+        data_new = data
+        time_to_wait = 0
+        while result[2] < confidence:
+            time_to_wait += rate
+            result = VM_Unbinned_likelihood(data_new, rad = True)
+            data_new = np.append(data_new, rv.rvs(size=1))
+        result = VM_Unbinned_likelihood(data, rad = True)
+        times_list.append(time_to_wait)
+    return np.median(times_list)

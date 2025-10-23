@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import warnings
 import math
+import os
 warnings.filterwarnings("ignore")
 def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[], output_dir = None, specifier_column = None):
     '''
@@ -102,7 +103,7 @@ def asymmetric_sample(value, upper, lower):
         sample = check - change
     return sample
 
-def df_return(df, host, columns, planet = 'b'):
+def df_return(df, host, columns, planet = None):
     '''
     Return entries in a column based on host name.
 
@@ -118,13 +119,23 @@ def df_return(df, host, columns, planet = 'b'):
     filtered dataframe
 
     '''
-    if len(columns) == 1:
-        return df.loc[(df['Host_ID'] == host) & (df['pl_letter'] == planet), columns].to_numpy()
-    elif len(columns) > 1:
-        column_to_return = []
-        for column in columns:
-            column_to_return.append(df.loc[(df['Host_ID'] == host) & (df['pl_letter'] == planet), column].to_numpy())
-        return column_to_return
+    if planet == None:
+        if len(columns) == 1:
+            a = df.loc[(df['Host_ID'] == host), columns].to_numpy()
+            return [x for xs in a for x in xs]
+        elif len(columns) > 1:
+            column_to_return = []
+            for column in columns:
+                column_to_return.append(df.loc[(df['Host_ID'] == host), column].to_numpy())
+            return [x for xs in column_to_return for x in xs]
+    else:
+        if len(columns) == 1:
+            return df.loc[(df['Host_ID'] == host) & (df['pl_letter'] == planet), columns].to_numpy()
+        elif len(columns) > 1:
+            column_to_return = []
+            for column in columns:
+                column_to_return.append(df.loc[(df['Host_ID'] == host) & (df['pl_letter'] == planet), column].to_numpy())
+            return column_to_return
 
 def transfer_columns_between_files(
     file_a_path,
@@ -217,9 +228,65 @@ def find_absolute_maximum_2d(arr):
                 max_value = element
     return max_value
 
-def boudnary_conditions(val, lower, upper):
-    if val < lower:
-        val += upper
-    if val > upper:
-        val -= upper
+def boundary_conditions(val, lower, upper):
+    if isinstance(val, np.ndarray) == True or isinstance(val, list) == True:
+        for idx, elements in enumerate(val):
+            if val[idx] < lower:
+                val[idx] += upper
+            if val[idx] > upper:
+                val[idx] -= upper
+    else:
+        if val < lower:
+            val += upper
+        if val > upper:
+            val -= upper
     return val
+
+
+def add_list_to_csv(csv_path, new_column_name, values_list, output_path=None):
+    """
+    Add a new column to a CSV file from a list of values.
+    If the CSV does not exist, create a new one.
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to the existing CSV file (or where to create it).
+    new_column_name : str
+        Name of the new column to add.
+    values_list : list
+        The values to insert as a column.
+    output_path : str, optional
+        Path to save the updated CSV. If None, overwrites csv_path.
+
+    Behavior
+    --------
+    - If the CSV exists:
+        * If the list is shorter, pads with NaN.
+        * If the list is longer, truncates.
+    - If the CSV does not exist:
+        * Creates a new CSV with just the given column.
+    """
+
+    if os.path.exists(csv_path):
+        # Load the CSV
+        df = pd.read_csv(csv_path)
+
+        # Adjust list length to match DataFrame
+        n = len(df)
+        if len(values_list) < n:
+            values_list = values_list + [None] * (n - len(values_list))
+        elif len(values_list) > n:
+            values_list = values_list[:n]
+
+        # Add the new column
+        df[new_column_name] = values_list
+
+    else:
+        # Create a new DataFrame with just this column
+        df = pd.DataFrame({new_column_name: values_list})
+
+    # Save back to file
+    if output_path is None:
+        output_path = csv_path
+    df.to_csv(output_path, index=False)

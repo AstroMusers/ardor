@@ -388,3 +388,4 @@ def K_Tests(flares, periods, epoch, KS = True, KU = True, AD = True, sampling = 
                 return K_tests
         else:
             return None, None
+        

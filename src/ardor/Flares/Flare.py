@@ -248,7 +248,7 @@ def phase_folder(time, period, epoch):
 
 
     '''
-    phase = ((time - (epoch)) % period)/period
+    phase = ((time - (epoch + period/2)) % period)/period
     return phase
 
 def flare_ID(data, sigma, fast = False, injection = False, old = False):

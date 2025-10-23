@@ -10,6 +10,8 @@ import ardor.SPI_Forward_Models.Orbit_Model_Library as OML
 import os
 import numpy as np
 
+
+
 def Run_Inverse_Cubic_Sim():
     ############# G TYPE SIMULATION #############
     base_dirG = 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/TESS Data/G_Type_LC'
@@ -271,32 +273,71 @@ def Run_Inverse_Cubic_Sim():
 
 
 def Run_Kappa_Sim():
-    lc_dir = 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/TESS Data/G_Type_LC/219101992/tess2019253231442-s0016-0000000219101992-0152-s_lc.fits'
-    lc_dir_M= 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/TESS Data/M_Type_LC/219822564/tess2019198215352-s0014-0000000219822564-0150-s_lc.fits'
-
-    kappa_list = [0, 0.25, 0.5, 1, 2, 4, 8]
-    lc_count = 25
+    base_dir = 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares'
+    lc_dir = os.path.join(base_dir, "TESS Data/G_Type_LC/219101992/tess2019253231442-s0016-0000000219101992-0152-s_lc.fits")
+    lc_dir_M = os.path.join(base_dir, "TESS Data/M_Type_LC/219822564/tess2019198215352-s0014-0000000219822564-0150-s_lc.fits")
     
-    ### M_Type
-    for kappa in kappa_list:
-        for hosts in range(50):
-            loc = 0.5
-            for iterations in range(lc_count):
-                lc, epoch = SPI.SPI_kappa_flare_injection(lc_dir_M, kappa, loc, 5, sp_type = 'M', flare_type='Flaring')
-                flares, lengths = Flare.tier1(lc.flux, 3, fast = False, injection = True)
-                Flare.tier2(lc.time, lc.flux, lc.error, flares, lengths,chi_square_cutoff=20,  csv=False, host_name = "M_" + str(219101992) + '_' + str(hosts) + '_kappa_' + str(kappa), output_dir = 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Simulations/Output/VM/M_Type', obs_time = lc_count*24*60*27, catalog_name = 'Kappa_Sim_M.csv', planet_epoch= epoch)
+    e_list = [0, 0.05, 0.1, 0.2, 0.5, 0.8]
+    omega_list = [0, 45, 90, 135, 180]
+    lc_count = 10
+    
+    ### M_Type6
+    for e in e_list:
+        for omega in omega_list:
+            for hosts in range(50):
+                for iterations in range(lc_count):
+                    lc, epoch = SPI.SPI_Geo_flare_injection(lc_dir_M, 5, 0.055, e, 0.603, omega,20, sp_type='M')
+                    flares, lengths = Flare.tier1(lc.flux, 3, fast = False, injection = True)
+                    Flare.tier2(lc.time, lc.flux, lc.error, flares, lengths,chi_square_cutoff=20,  csv=False, 
+                                host_name = "M_" + str(219822564) + '_' + str(hosts) + '_e_' + str(e) + '_omega_' + str(omega), 
+                                output_dir = os.path.join(base_dir, "Simulations/Output/VM/M_Type") 
+                                , catalog_name = 'Kappa_Sim_M.csv')
+                    print(iterations, hosts, e)
                 
-                print(iterations, hosts, kappa)
     ### G_Type
-    for kappa in kappa_list:
+    for e in e_list:
+        for omega in omega_list:
+            for hosts in range(50):
+                for iterations in range(lc_count):
+                    lc, epoch = SPI.SPI_Geo_flare_injection(lc_dir, 5, 0.048, e, 0.933, omega,20)
+                    flares, lengths = Flare.tier1(lc.flux, 3, fast = False, injection = True)
+    
+                    Flare.tier2(lc.time, lc.flux, lc.error, flares, lengths,chi_square_cutoff=20,  csv=False, 
+                                host_name = "G_" +str(219101992) +'_kappa_' + str(hosts) +'_' + str(e) + '_omega_' + str(omega), 
+                                output_dir = os.path.join(base_dir, "Simulations/Output/VM/G_Type"), 
+                                catalog_name = 'Kappa_Sim_G.csv')
+                    print(iterations, hosts, e)
+
+def Run_IR(iterations):
+    base_dir = 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares'
+    lc_dir = os.path.join(base_dir, "TESS Data/G_Type_LC/219101992/tess2019253231442-s0016-0000000219101992-0152-s_lc.fits")
+    lc_dir_M = os.path.join(base_dir, "TESS Data/M_Type_LC/219822564/tess2019198215352-s0014-0000000219822564-0150-s_lc.fits")
+    
+    e_list = [0, 0.05, 0.1, 0.2, 0.5, 0.8]
+    iterations = 20
+    
+    ### M_Type6
+    for e in e_list:
         for hosts in range(50):
-            loc = 0.5
-            for iterations in range(lc_count):
-                lc, epoch = SPI.SPI_kappa_flare_injection(lc_dir, kappa, loc, 5, sp_type = 'G', flare_type='Flaring')
+            for iterate in range(iterations):
+                lc, epoch = SPI.SPI_Geo_flare_injection(lc_dir_M, 5, 0.055, e, 0.603, 0,0, sp_type='M')
+                flares, lengths = Flare.tier1(lc.flux, 3, fast = False, injection = True)
+                Flare.tier2(lc.time, lc.flux, lc.error, flares, lengths,chi_square_cutoff=20,  csv=False, 
+                            host_name = "M_" + str(219822564) + '_' + str(hosts) + '_e_' + str(e), 
+                            output_dir = os.path.join(base_dir, "Simulations/Output/VM/M_Type") 
+                            , catalog_name = 'Kappa_Sim_M.csv')
+                print(iterations, hosts, e)
+                
+    ### G_Type
+    for e in e_list:
+        for hosts in range(50):
+            for iterate in range(iterations):
+                lc, epoch = SPI.SPI_Geo_flare_injection(lc_dir, 5, 0.048, e, 0.933, 0,0)
                 flares, lengths = Flare.tier1(lc.flux, 3, fast = False, injection = True)
 
-                Flare.tier2(lc.time, lc.flux, lc.error, flares, lengths,chi_square_cutoff=20,  csv=False, host_name = "G_" +str(219101992) +'_kappa_' + str(hosts) +'_' + str(kappa), output_dir = 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Simulations/Output/VM/G_Type', obs_time = lc_count*24*60*27, catalog_name = 'Kappa_Sim_G.csv', planet_epoch= epoch)
-                print(iterations, hosts, kappa)
+                Flare.tier2(lc.time, lc.flux, lc.error, flares, lengths,chi_square_cutoff=20,  csv=False, 
+                            host_name = "G_" +str(219101992) +'_kappa_' + str(hosts) +'_' + str(e), 
+                            output_dir = os.path.join(base_dir, "Simulations/Output/VM/G_Type"), 
+                            catalog_name = 'Kappa_Sim_G.csv')
+                print(iterations, hosts, e)
 
-
-Run_Inverse_Cubic_Sim()
