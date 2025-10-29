@@ -15,6 +15,7 @@ from matplotlib.font_manager import FontProperties
 import ardor.Statistical_Tests.MLE as MLE
 import matplotlib.cm as cm
 import matplotlib.colors as colors
+import os
 for fontpath in font_manager.findSystemFonts():
     if 'lmroman10-regular' in fontpath.lower():
         path = fontpath

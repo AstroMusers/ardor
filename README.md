@@ -1,44 +1,48 @@
 # _ardor_
-_ardor_ is a multi-tiered flare detection pipeline which aims to extract and characterize stellar flares from TESS two minute and 20 second cadence data. Using _ardor_
-is fairly straightforward, and only requires a handful of user inputs. All relevant functions used in the below functions are found in _Flare.py_, and an example test case can be found in 'example.py'.
 
-## Tier 0 - Detrending
-The tier0() function only requires the .fits file of interest: time, PDCSAP_Flux, Detrended_Flux, PDCSAP_Error = tier0(TESS_fits_file). The output is four numpy arrays: time (BJD), PDCSAP flux (electrons/s), detrended PDCSAP flux (electron/s, median centered), and the PDCSAP Flux Error, respectively.
+**Welcome to ardor**
 
-## Tier 1 - Flare Candidate ID
-The tier1() function requires the numpy array of the detrended flux (assumed to be the output from Tier 0, but feel free to use your own detrending methods), as well as the sensitivity of the flares you are interested in, given in terms of standard deviation away from the baseline flux. The default is 3. 
-The syntax is: tier1(detrended_flux, sigma=3) = flare_index, flare_length. The output gives two numpy arrays. The first is a list of flare candidate **_indices_**, stating at what index in the pdcsap flux array the flare candidate occurs. To get the BJD time of the candidate flare, simply use the output of Tier 0, and pass time[flares[0]], etc. The second output is a 1:1 list which approximates the flare duration by measuring how many data points after the initial peak the data takes to return back to baseline. Since this is data points, it is dependent on the cadence used.
+`ardor` is a package dedicated to detecting, modeling, and analyzing correlated flares in photometry. It featues a multi-tiered flare detection pipeline, simulation tools, statistical testing, and forward modeling functions, as well as a visualization suite. While its primary goal is to detect correlated flare arising from magnetic star-planet interactions, `ardor` also searches for correlation with stellar rotation.
 
-## Tier 2 - Coarse Model Fitting
-The tier2() function requires a few more inputs, and has the following syntax: tier2(time, flux, pdcsap_error, flares, lengths, output_dir, host_name = 'My_Host', T = 4000, host_radius = 1), and returns .csv files of flare candidates. The time, flux (NOT detrended_flux), and pdcsap_error are all from the tier0 output. The flares and lengths lists are from the tier1 ouptut. The output_dir is the folder in which you want to put the output .csv files. The host_name is a string on what the target is called, and writes the csv file titles accordingly. The T values is the effective temperature of the host, in Kelvin. The host_radius is the radius of the target, in solar radii. The output csv will have three, unlabeled columns. The first column is "Time since Flare Peak (min)", the second is "Median Relative Flux", and the third is "Median relative PDCSAP Error". These csvs are the input for tier3.
+# Flare Detection Pipeline
+`ardor` incorporates a flare detection pipeline to identify, characterize, and validate stellar flares in photometry. This pipeline uses four **tiers**:
+- Tier 0: Light Curve Detrending
+- Tier 1: Outlier identification
+- Tier 2: Preliminary Model Parameterization
+- Tier 3: Bayesian Modeling using `allesfitter`
 
-## Tier 3 - _allesfitter_ MCMC
-The tier3() function requires a few directory inputs, but otherwise requries the same information from tier2. The syntax is 
-tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, settings_template_dir, params_template_dir, host_name = 'My_Host', T = 4000, host_radius = 1, MCMC_CPUS = 1). The first directory should be the same directory passed in the tier2 function. The tier_3_working directory should be a new folder, as files will be copied and deleted in and out as the MCMC runs from file to file. If an error arises, be sure to clear this directory out before rerunning. The tier_3_output directory is the folder where you want the final MCMC products to be put. The settings_templare_dir is the directory where the settings.csv file template is found. Example templates are found in the 'templates' folder in the repo. A similar story for the params.csv file. Some settings are easily modified from these templates (i.e. MCMC walkers, MCMC steps), which you can feel free to mess around with. If you want to create your own custom settings/params files and want to know the different settings available from _allesfitter_, check out the _allesfitter_ documentation at https://www.allesfitter.com/ (Günther & Daylan, 2019 and 2021; https://github.com/MNGuenther/allesfitter). The host name, T value, and host radius should be the same values passed in tier2. Finally, the MCMC_CPUS argument is the integer number of CPUs you want to run the MCMC on. ((NOTE: Multicore processing is NOT supported on Windows; this can be bypassed by using WSL))
+The end product of the `ardor` pipeline is a list of identified flares and flare parameters, including epoch, flare ampltidue, duration, and bolometric energy. This pipeline can be found in the `Flare.py` module.
 
-This repo is a work in progress, so please report any bugs or issues! Updates will be occasionally pushed! I am working on making the module pip installable and to generate more comprehensive documentation, so stay tuned!
-=======
-# _ardor_
-_ardor_ is a multi-tiered flare detection pipeline that aims to extract and characterize stellar flares from TESS 2-minute and 20-second cadence data.
+![](../ardor/graphics/Ardor_T1_T2_Rescale.jpg)
 
-All relevant functions used in the below functions are found in _Flare.py_, and an example test case can be found in `example.py`.
+![](../ardor/graphics/Allesfitter.png)
 
-## Tier 0 - Detrending
-The tier0() function only requires the .fits file of interest: time, PDCSAP_Flux, Detrended_Flux, PDCSAP_Error = tier0(TESS_fits_file). The output is four numpy arrays: time (BJD), PDCSAP flux (electrons/s), detrended PDCSAP flux (electron/s, median centered), and the PDCSAP Flux Error, respectively.
+## Pipeline Diagnostics
+`ardor` supports injection-recovery and precision-recall tests using simulated flares in real light curves to check performance over flare paramter space.
 
-## Tier 1 - Flare Candidate ID
-The tier1() function requires the numpy array of the detrended flux (assumed to be the output from Tier 0, but feel free to use your own detrending methods), as well as the sensitivity of the flares you are interested in, given in terms of standard deviation away from the baseline flux. The default is 3. 
-The syntax is: tier1(detrended_flux, sigma=3) = flare_index, flare_length. The output gives two numpy arrays. The first is a list of flare candidate **_indices_**, stating at what index in the pdcsap flux array the flare candidate occurs. To get the BJD time of the candidate flare, simply use the output of Tier 0, and pass time[flares[0]], etc. The second output is a 1:1 list that approximates the flare duration by measuring how many data points after the initial peak the data takes to return to baseline.
+![](../ardor/graphics/Injection_Recovery_Parameters.png)
 
-## Tier 2 - Coarse Model Fitting
-The tier2() function requires a few more inputs, and has the following syntax: tier2(time, flux, pdcsap_error, flares, lengths, output_dir, host_name = 'My_Host', T = 4000, host_radius = 1), and returns .csv files of flare candidates. The time, flux (NOT detrended_flux), and pdcsap_error are all from the tier0 output. The flares and lengths lists are from the tier1 output. The output_dir is the folder in which you want to put the output .csv files. The host_name is a string that represents what the target is called, and writes the csv file titles accordingly. The T value is the effective temperature of the host, in Kelvin. The host_radius is the radius of the target, in solar radii. The output csv will have three unlabeled columns. The first column is "Time since Flare Peak (min)", the second is "Median Relative Flux", and the third is "Median relative PDCSAP Error". These csv files are the input for tier3.
+# Statistical Tests
+`ardor` can anaylze flare samples for a particular planetary system and determine if the flare samples are consistent with significant flare clustering. This is performed using two types of tests:
+- Goodness-of-fit (GoF) tests
+- Unbinned Likelihood Analysis
 
-## Tier 3 - _allesfitter_ MCMC
-The tier3() function requires a few directory inputs, but otherwise requires the same information from tier2. The syntax is 
-tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, settings_template_dir, params_template_dir, host_name = 'My_Host', T = 4000, host_radius = 1, MCMC_CPUS = 1). The first directory should be the same as that passed to the tier2 function. The tier_3_working directory should be a new folder, as files will be copied and deleted in and out as the MCMC runs from file to file. If an error arises, be sure to clear this directory out before rerunning. The tier_3_output directory is the folder where you want the final MCMC products to be put. The `settings_templare_dir` is the directory where the settings.csv file template is found. Example templates are found in the 'templates' folder in the repo. A similar story for the params.csv file. Some settings are easily modified from these templates (i.e., MCMC walkers, MCMC steps), which you can feel free to mess around with. If you want to create your own custom settings/params files and want to know the different settings available from _allesfitter_, check out the _allesfitter_ documentation at https://www.allesfitter.com/ (Günther & Daylan, 2019 and 2021; https://github.com/MNGuenther/allesfitter). The host name, T value, and host radius should be the same values passed in tier2. Finally, the MCMC_CPUS argument is the integer number of CPUs you want to run the MCMC on. ((NOTE: Multicore processing is NOT supported on Windows; this can be bypassed by using WSL))
+Both take as input phase folded flare epochs with the planetary orbital period and output their relevant test statistic and significance metric.
 
+## GoF Tests
+Three different GoF tests are supported: the Kolmolgorov-Smirnov (KS) test, the Anderson-Darling (AD) test, and the Kuiper (KU) test. These statistical tests are wrapped from the `scipy`, `skgof`, and `astropy` packages, respectively. `ardor` constructs the empirical cumulative density function (eCDF) from the given phase-folded flare epochs. The GoF tests compare the eCDF to the expected uniform distribution and determines a distance statistic between the eCDF and the uniform CDF. Each distance statistic is drawn from its own distribution which returns a p-value, which can be used to determine the significance of the flare sample. The p-value answers the question:
 
+*What is the probability that the empirical sample is drawn from a uniform distribution?*
 
+Thus, the GoF tests can answer if a sample is non-uniform to some signifiance level, but does not inform the shape of the sample.
+
+## Unbinned Likelihood Analysis
+To compliment the GoF tests, `ardor` uses a method called Unbinned Likelihood Analysis which aims to find the best-fit parameters that minimizes the likelihood function. Here, we directly fit a probability density function (PDF), the von Mises PDF:
+
+$$ f(x,\kappa) = \frac{\exp{\kappa \cos{x}}}{2\pi I_{0}(\kappa)}.$$
+The von Mises PDF can be thought of as a periodic Gaussian; it is unimodal and can cross periodic boundaries, ideal characterstics to find flare clustering a particular orbital phase. The likelihood function is minimized using `scipy.optimize.minimize`.
+
+![](../ardor/graphics/CDF+VM_Poster.png)
 # Acknowledgements
 
 The development of ardor has been supported by the McDonnell Center for Space Sciences at Washington University in St. Louis.

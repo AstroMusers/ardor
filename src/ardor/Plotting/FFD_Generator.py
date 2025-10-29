@@ -21,15 +21,15 @@ import matplotlib.cm as cm
 from matplotlib.ticker import NullFormatter
 import math
 for fontpath in font_manager.findSystemFonts(fontpaths=None, fontext='ttf'):
+    print(fontpath.lower())
     if 'lmroman10-regular'.lower() in fontpath.lower():
         path = fontpath
-        print(path)
 for fontpath in font_manager.findSystemFonts(fontpaths=None, fontext='ttf'):
     if 'lmroman10-italic'.lower() in fontpath.lower():
         italicpath = fontpath
         print(italicpath)
-font = FontProperties(fname=path)
-italicfont = FontProperties(fname=italicpath)
+font = FontProperties(fname='/ugrad/whitsett.n/fonts/latin-modern-roman/lmroman10-regular.otf')
+italicfont = FontProperties(fname='/ugrad/whitsett.n/fonts/latin-modern-roman/lmroman10-italic.otf')
 rcParams["mathtext.fontset"] = "cm"
 def linear(x, alpha, beta):
     return alpha*x + beta
@@ -105,8 +105,8 @@ def FFD_Generator(data_dir, dict_params = None, third_variables=['name', 'N', 'l
 
 ############### EXOPLANET HOST FFD GENERATOR###################################
 # rcParams["mathtext.default"] = 'rm'
-data = pd.read_csv('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_Exoplanet_MCMC_Flares_New.csv')
-a, b,c,d,a_err, b_err,e= FFD_Generator('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_Exoplanet_MCMC_Flares_New.csv', dict_params=True)
+# data = pd.read_csv('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_Exoplanet_MCMC_Flares_New.csv')
+# a, b,c,d,a_err, b_err,e= FFD_Generator('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_Exoplanet_MCMC_Flares_New.csv', dict_params=True)
 # fig, ax = plt.subplots(2, 3, layout='constrained')
 # fig.set_size_inches(7, 3.5)
 # x = np.linspace(30,37)
@@ -218,23 +218,23 @@ a, b,c,d,a_err, b_err,e= FFD_Generator('C:/Users/natha/OneDrive - Washington Uni
 # rcParams["mathtext.default"] = 'rm'
 # data = pd.read_csv('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/All_TOI_MCMC_Flares_New.csv')
 # a, b,c,d, a_err, b_err, e = FFD_Generator('C:/Users/natha/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/All_TOI_MCMC_Flares_New.csv', third_variables=['name','N','logZ', 'Teff', 'Obs_Time'])
-names = []
-a_param = []
-b_param = []
-N = []
-dlogz_list = []
-T_list = []
-age = []
-for index, name in enumerate(e):
-    names.append(e[index].name)
-    a_param.append("$" + str(round_to_sig_figs(d[index][0],3)) + "\pm" + str(round_to_sig_figs(a_err[index], 1)) + "$")
-    b_param.append("$" + str(round_to_sig_figs(d[index][1],3)) + "\pm" + str(round_to_sig_figs(b_err[index], 1)) + "$")
-    N.append(e[index].N)
-    T_list.append(e[index].Teff)
-    dlogz_list.append(round_to_sig_figs(np.median(e[index].logZ),2))
-    age.append(e[index].Age)
-output = pd.DataFrame({"Name": names, "N": N, "a": a_param,"b": b_param, "Teff": T_list, "dlogZ": dlogz_list})
-output.to_csv("C:/Users/natha/Desktop/FFD_Host_Data.csv", index = False)
+# names = []
+# a_param = []
+# b_param = []
+# N = []
+# dlogz_list = []
+# T_list = []
+# age = []
+# for index, name in enumerate(e):
+#     names.append(e[index].name)
+#     a_param.append("$" + str(round_to_sig_figs(d[index][0],3)) + "\pm" + str(round_to_sig_figs(a_err[index], 1)) + "$")
+#     b_param.append("$" + str(round_to_sig_figs(d[index][1],3)) + "\pm" + str(round_to_sig_figs(b_err[index], 1)) + "$")
+#     N.append(e[index].N)
+#     T_list.append(e[index].Teff)
+#     dlogz_list.append(round_to_sig_figs(np.median(e[index].logZ),2))
+#     age.append(e[index].Age)
+# output = pd.DataFrame({"Name": names, "N": N, "a": a_param,"b": b_param, "Teff": T_list, "dlogZ": dlogz_list})
+# output.to_csv("C:/Users/natha/Desktop/FFD_Host_Data.csv", index = False)
 # fig, ax = plt.subplots(2, 1, layout='constrained')
 # fig.set_size_inches(3.5, 3.5)
 # x = np.linspace(30,37)
