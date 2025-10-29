@@ -230,6 +230,7 @@ def EVE_data_extract(fits_lc_file, line_bool = True, diode_bool = False, line = 
 
 def phase_folder(time, period, epoch):
     '''
+    Takes a time array and phase folds it to the given period and epoch.
 
     Parameters
     ----------
@@ -253,7 +254,7 @@ def phase_folder(time, period, epoch):
 
 def flare_ID(data, sigma, fast = False, injection = False, old = False):
     '''
-    
+    Identifies potential flares in the given data using a rolling standard deviation.
 
     Parameters
     ----------
@@ -404,7 +405,9 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
 
 def delete_nans(time, data, error):
     '''
-    
+    Deletes NAN values from both the time and data arrays, ensuring both arrays
+    remain 1-to-1 after the NANs are removed.
+
     Parameters
     ----------
     time : numpy array
@@ -455,9 +458,9 @@ def delete_nans(time, data, error):
 
 def SMA_detrend(time, data, error, LS_Iterations=3, time_scale=100, model=False):
     '''
-    
     This applies a windowed, Single Moving Average to detrend potentially
     periodic data.
+    
     Parameters
     ----------
     data : numpy array
