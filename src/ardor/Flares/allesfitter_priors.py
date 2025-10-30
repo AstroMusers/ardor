@@ -15,7 +15,7 @@ import math
 from ardor.Utils.planck_law import planck_law, planck_integrator
 from ardor.Utils.Utils import asymmetric_sample
 import allesfitter
-
+from astropy.table import Table
 def find_nearest(array, value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
