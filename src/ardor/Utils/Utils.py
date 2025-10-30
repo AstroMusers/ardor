@@ -9,6 +9,8 @@ import numpy as np
 import warnings
 import math
 import os
+from astropy.table import Table
+from astropy.io import ascii
 warnings.filterwarnings("ignore")
 def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[], output_dir = None, specifier_column = None):
     '''
@@ -347,3 +349,38 @@ def construct_param_file(param_dir, priors = None, baseline = 'hybrid_spline',
     table.add_column(labels, name='label')
     table.add_column(units, name='unit')
     ascii.write(table, os.path.join(param_dir, 'params.csv'), overwrite=True, format='csv')
+
+def construct_settings_file(settings_file_dir, working_dir, baseline = 'hybrid_spline', 
+                         N=1, name = 'Flare', multi_process_bool = True
+                         , cores = 10, walkers = 15, steps = 5000, burn_in = 1000):
+    """Constructs settings file for Tier 3 allesfitter MCMC run.
+
+    Args:
+        settings_file_dir (str): Directory of template settings file.
+        working_dir (str): Directory to save constructed settings file.
+        baseline (str, optional): Baseline you want to use. Defaults to 'hybrid_spline'. 'sample_GP_Matern32' also available.
+        N (int, optional): Number of flares to fit. Defaults to 1.
+        name (str, optional): Name of the fit. Defaults to 'Flare'.
+        multi_process_bool (bool, optional): Whether to use multiprocessing. Defaults to True.
+        cores (int, optional): Number of cores to use for multiprocessing. Defaults to 10.
+        walkers (int, optional): Number of walkers for MCMC. Defaults to 15.
+        steps (int, optional): Total number of steps for MCMC. Defaults to 5000.
+        burn_in (int, optional): Number of burn-in steps for MCMC. Defaults to 1000.
+    """
+    table = ascii.read(settings_file_dir, format='csv')
+    for idx, values in enumerate(table['#name']):
+        if 'Flaronardo' in table['#name'][idx]:
+            table['#name'][idx] = str(values).replace("Flaronardo", name)
+    for idx, values in enumerate(table['value']):
+        if 'Flaronardo' in table['value'][idx]:
+            table['value'][idx] = str(values).replace("Flaronardo", name)
+
+    table['value'][table['#name'] == 'inst_phot'] = name
+    table['value'][table['#name'] == 'multiprocess'] = multi_process_bool
+    table['value'][table['#name'] == 'multiprocess_cores'] = cores
+    table['value'][table['#name'] == 'mcmc_nwalkers'] = walkers
+    table['value'][table['#name'] == 'mcmc_total_steps'] = steps
+    table['value'][table['#name'] == 'mcmc_burn_steps'] = burn_in
+    table['value'][table['#name'] == f'baseline_flux_{name}'] = baseline
+    table['value'][table['#name'] == 'N_flares'] = N
+    ascii.write(table, os.path.join(working_dir, 'settings.csv'), overwrite=True, format='csv')
