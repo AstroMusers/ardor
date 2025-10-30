@@ -99,10 +99,10 @@ def asymmetric_sample(value, upper, lower):
     check = np.random.random()
     if check > 0.5:
         change = np.abs(np.random.normal(loc = 0, scale = upper))
-        sample = check + change
+        sample = value + change
     elif check <= 0.5:
         change = np.abs(np.random.normal(loc = 0, scale = lower))
-        sample = check - change
+        sample = value - change
     return sample
 
 def df_return(df, host, columns, planet = None):
