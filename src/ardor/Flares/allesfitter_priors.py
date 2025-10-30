@@ -237,3 +237,95 @@ def model_compare(target_file, model1_working_dir, model2_working_dir, model1_pa
     for files in os.listdir(model2_working_dir + '/results'):
         os.remove(model2_working_dir + '/results/' + files)
     return d_logz
+
+def construct_param_file(param_dir, priors = None, baseline = 'hybrid_spline', 
+                         model = 'flare', N=1, name = 'Flare'):
+    if model == 'flare':
+        if N == 1:
+            param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
+            if priors == None:
+                best_guess = [0, 0.05, 0.1]
+                priors = ['uniform -1 1', 'uniform 0 0.5', 'uniform 0 3']
+                labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
+            units = ['days', 'days', 'rel. flux']
+        elif N == 2:
+            param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1',
+                           'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2']
+            if priors == None:
+                best_guess = [0, 0.05, 0.1, 0.2, 0.05, 0.1]
+                priors = ['uniform -1 1', 'uniform 0 0.5', 'uniform 0 3', 
+                          'uniform -1 1', 'uniform 0 0.5', 'uniform 0 3']
+                labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
+                            'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
+            units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
+        elif N == 3:
+            param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1',
+                           'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2',
+                           'flare_tpeak_3', 'flare_fwhm_3', 'flare_ampl_3']
+            if priors == None:
+                best_guess = [0, 0.05, 0.1, 0.2, 0.05, 0.1, 0.4, 0.05, 0.1]
+                priors = ['uniform -0.5 0.5', 'uniform 0 0.5', 'uniform 0 3', 
+                          'uniform 0 0.5', 'uniform 0 0.5', 'uniform 0 3',
+                          'uniform 0 0.5', 'uniform 0 0.5', 'uniform 0 3']
+                labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
+                            'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.',
+                            'Flare3_Time', 'Flare3_FWHM', 'Flare3_Amp.']
+            units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux',
+                        'days', 'days', 'rel. flux']
+    if baseline == 'gp_matern32':
+        param_names += [f'ln_err_flux_{name}', f'baseline_gp_offset_flux_{name}', f'baseline_gp_matern32_lnsigma_flux_{name}', 
+                        f'baseline_gp_matern32_lnrho_flux_{name}']
+        best_guess += [-7,0, -5, 0]
+        priors += ['uniform -10 -2', 'uniform -0.02, 0.02', 'uniform -15 0', 'uniform -1 15']
+        labels += [f'ln_err_flux_{name}', rf'GP_Matern32_Baseline_{name}', rf'GP_Matern32_ln$sigma$_{name}', 
+                   rf'GP_Matern32_ln$rho$_{name}']
+        units += ['rel. flux', 'rel. flux', '', '']
+    elif baseline == 'hybrid_spline':
+        param_names += [f'ln_err_flux_{name}']
+        best_guess += [-7]
+        priors += ['uniform -10 -2']
+        labels += [f'ln_err_flux_{name}']
+        units += ['rel. flux']
+    table = Table()
+    table.add_column(param_names, name='#param_name')
+    table.add_column(best_guess, name='best_guess')
+    table.add_column([1]*len(param_names), name='fit')
+    table.add_column(priors, name='prior')
+    table.add_column(labels, name='label')
+    table.add_column(units, name='unit')
+    ascii.write(table, os.path.join(param_dir, 'params.csv'), overwrite=True, format='csv')
+
+def construct_settings_file(settings_file_dir, working_dir, baseline = 'hybrid_spline', 
+                         N=1, name = 'Flare', multi_process_bool = True
+                         , cores = 10, walkers = 15, steps = 5000, burn_in = 1000):
+    """Constructs settings file for Tier 3 allesfitter MCMC run.
+
+    Args:
+        settings_file_dir (str): Directory of template settings file.
+        working_dir (str): Directory to save constructed settings file.
+        baseline (str, optional): Baseline you want to use. Defaults to 'hybrid_spline'. 'sample_GP_Matern32' also available.
+        N (int, optional): Number of flares to fit. Defaults to 1.
+        name (str, optional): Name of the fit. Defaults to 'Flare'.
+        multi_process_bool (bool, optional): Whether to use multiprocessing. Defaults to True.
+        cores (int, optional): Number of cores to use for multiprocessing. Defaults to 10.
+        walkers (int, optional): Number of walkers for MCMC. Defaults to 15.
+        steps (int, optional): Total number of steps for MCMC. Defaults to 5000.
+        burn_in (int, optional): Number of burn-in steps for MCMC. Defaults to 1000.
+    """
+    table = ascii.read(settings_file_dir, format='csv')
+    for idx, values in enumerate(table['#name']):
+        if 'Flaronardo' in table['#name'][idx]:
+            table['#name'][idx] = str(values).replace("Flaronardo", name)
+    for idx, values in enumerate(table['value']):
+        if 'Flaronardo' in table['value'][idx]:
+            table['value'][idx] = str(values).replace("Flaronardo", name)
+
+    table['value'][table['#name'] == 'inst_phot'] = name
+    table['value'][table['#name'] == 'multiprocess'] = multi_process_bool
+    table['value'][table['#name'] == 'multiprocess_cores'] = cores
+    table['value'][table['#name'] == 'mcmc_nwalkers'] = walkers
+    table['value'][table['#name'] == 'mcmc_total_steps'] = steps
+    table['value'][table['#name'] == 'mcmc_burn_steps'] = burn_in
+    table['value'][table['#name'] == f'baseline_flux_{name}'] = baseline
+    table['value'][table['#name'] == 'N_flares'] = N
+    ascii.write(table, os.path.join(working_dir, 'settings.csv'), overwrite=True, format='csv')

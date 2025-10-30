@@ -721,65 +721,39 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
         return event_list
                     
 def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, settings_template_dir, params_template_dir, host_name = 'My_Host', T = 4000, host_radius = 1, MCMC_CPUS = 1):
-    #Check each folder
-    flare_files = os.listdir(tier_2_output_dir)
-    for csvs in flare_files:
-        parameter_list_list = [[], [], [], [], [], [], [], [], [], [], [], [], [], [], []]
-        # try:
-        #Make output directory to store plots and flare data for each target
-        #Omit the statistics files
-        if csvs == 'All_Flare_Parameters.csv' or csvs == 'Host_Statistics.txt' or csvs == 'Flare_Phase.csv':
-            continue
-        # Copy relevant file to allesfitter folder
-        shutil.copyfile(tier_2_output_dir + '/' + csvs, tier_3_working_dir+ '/' +  csvs)
-        allesfitter_priors.csv_cleaner(tier_3_working_dir + '/' + csvs)
-        # Run allesfitter
-        allesfitter_priors.flare_params(tier_3_working_dir + '/' +  csvs, params_template_dir, tier_3_working_dir + '/params.csv')
-        allesfitter_priors.flare_settings(tier_3_working_dir + '/' +  csvs, settings_template_dir, tier_3_working_dir + '/settings.csv', multi_process=True, cores=MCMC_CPUS)
-        allesfitter.mcmc_fit(tier_3_working_dir)
-        allesfitter.mcmc_output(tier_3_working_dir)
+    '''
+    Tier 3 of ardor. This function accepts the output directory of tier 2, and runs
+    the MCMC fitting procedure on each flare found in tier 2, saving the results
+    to the specified output directory.
 
-        #Extract relevant parameters and append them to relevant lists
-        # Full Data csv
-        parameter_list = allesfitter_priors.return_parameters(tier_3_working_dir + '/results/mcmc_table.csv')
-        if len(parameter_list) == 0:
-            continue
-        energy = allesfitter_priors.flare_energy(parameter_list[3], parameter_list[6], T,  host_radius)
-        parameter_list_list[0].append(host_name)
-        parameter_list_list[1].append(csvs[:-4])
-        for index in range(9):
-            parameter_list_list[index+2].append(parameter_list[index])
-        parameter_list_list[11].append(energy)
-        parameter_list_list[12].append(T)
-        parameter_list_list[13].append(host_radius)
+    Parameters
+    ----------
+    tier_2_output_dir : string
+        The directory where the tier 2 flare csv files are located.
+    tier_3_working_dir : string
+        The working directory for tier 3. This is where temporary files will be stored.
+    tier_3_output_dir : string
+        The output directory for tier 3. This is where the final MCMC results will be stored.
+    settings_template_dir : string
+        The directory of the settings template file for MCMC fitting.
+    params_template_dir : string
+        The directory of the params template file for MCMC fitting.
+    host_name : string
+        The name of the host star. Used for naming output files.
+    T : float
+        The effective temperature of the host star. Used for flare energy calculations.
+    host_radius : float
+        The radius of the host star. Used for flare energy calculations.
+    MCMC_CPUS : int
+        The number of CPUs to use for MCMC fitting.
 
+    Returns
+    -------
+    None.
 
-        #Per target csv
-        #Remove current csv
-        os.remove(tier_3_working_dir + '/' +  csvs)
-        #Copy relevant graphs and log files
-        shutil.copyfile(tier_3_working_dir + '/results/mcmc_corner.pdf', tier_3_output_dir + '/mcmc_corner_' + csvs[:-4] + '.pdf')
-        shutil.copyfile(tier_3_working_dir + '/results/mcmc_fit_b.pdf', tier_3_output_dir + '/mcmc_fit_' + csvs[:-4] + '.pdf')
-        result_dir = os.listdir(tier_3_working_dir + '/results')
-        for dirs in result_dir:
-            if dirs[-3] == 'l':
-                shutil.copyfile(tier_3_working_dir + '/results/' + dirs, tier_3_output_dir + '/mcmc_' + csvs[:-4] + '.log')
-        #Delete results folder
-        for files in os.listdir(tier_3_working_dir + '/results'):
-            os.remove(tier_3_working_dir + '/results/' + files)
-        # except:
-        #     print(1)
-        #     parameter_list_list[0].append(host_name)
-        #     parameter_list_list[1].append(csvs[:-4])
-        #     for index in range(9):
-        #         parameter_list_list[index+2].append(np.nan)
-        #     parameter_list_list[11].append(np.nan)
-        #     parameter_list_list[12].append(T)
-        #     parameter_list_list[13].append(host_radius)
-        ZZ = np.column_stack((parameter_list_list[0], parameter_list_list[1], parameter_list_list[2], parameter_list_list[3], parameter_list_list[4], parameter_list_list[5], parameter_list_list[6], parameter_list_list[7], parameter_list_list[8], parameter_list_list[9], parameter_list_list[10], parameter_list_list[11], parameter_list_list[12], parameter_list_list[13]))
-        with open(tier_3_output_dir + '/All_TOI_MCMC_Flares.csv', "a") as f:
-            np.savetxt(f, ZZ, delimiter=",", fmt='%s')
-            f.close()
+    '''
+    ##List out the flare .csv files
+    os.listdir(tier_2_output_dir)
 
 ##EVE Related Functions (Solar)
 def EVE_detrend(data, time, return_trend = True):
