@@ -290,3 +290,60 @@ def add_list_to_csv(csv_path, new_column_name, values_list, output_path=None):
     if output_path is None:
         output_path = csv_path
     df.to_csv(output_path, index=False)
+
+def construct_param_file(param_dir, priors = None, baseline = 'hybrid_spline', 
+                         model = 'flare', N=1, name = 'Flare'):
+    if model == 'flare':
+        if N == 1:
+            param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
+            if priors == None:
+                best_guess = [0, 0.05, 0.1]
+                priors = ['uniform -1 1', 'uniform 0 0.5', 'uniform 0 3']
+                labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
+            units = ['days', 'days', 'rel. flux']
+        elif N == 2:
+            param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1',
+                           'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2']
+            if priors == None:
+                best_guess = [0, 0.05, 0.1, 0.2, 0.05, 0.1]
+                priors = ['uniform -1 1', 'uniform 0 0.5', 'uniform 0 3', 
+                          'uniform -1 1', 'uniform 0 0.5', 'uniform 0 3']
+                labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
+                            'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
+            units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
+        elif N == 3:
+            param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1',
+                           'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2',
+                           'flare_tpeak_3', 'flare_fwhm_3', 'flare_ampl_3']
+            if priors == None:
+                best_guess = [0, 0.05, 0.1, 0.2, 0.05, 0.1, 0.4, 0.05, 0.1]
+                priors = ['uniform -0.5 0.5', 'uniform 0 0.5', 'uniform 0 3', 
+                          'uniform 0 0.5', 'uniform 0 0.5', 'uniform 0 3',
+                          'uniform 0 0.5', 'uniform 0 0.5', 'uniform 0 3']
+                labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
+                            'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.',
+                            'Flare3_Time', 'Flare3_FWHM', 'Flare3_Amp.']
+            units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux',
+                        'days', 'days', 'rel. flux']
+    if baseline == 'gp_matern32':
+        param_names += [f'ln_err_flux_{name}', f'baseline_gp_offset_flux_{name}', f'baseline_gp_matern32_lnsigma_flux_{name}', 
+                        f'baseline_gp_matern32_lnrho_flux_{name}']
+        best_guess += [-7,0, -5, 0]
+        priors += ['uniform -10 -2', 'uniform -0.02, 0.02', 'uniform -15 0', 'uniform -1 15']
+        labels += [f'ln_err_flux_{name}', rf'GP_Matern32_Baseline_{name}', rf'GP_Matern32_ln$sigma$_{name}', 
+                   rf'GP_Matern32_ln$rho$_{name}']
+        units += ['rel. flux', 'rel. flux', '', '']
+    elif baseline == 'hybrid_spline':
+        param_names += [f'ln_err_flux_{name}']
+        best_guess += [-7]
+        priors += ['uniform -10 -2']
+        labels += [f'ln_err_flux_{name}']
+        units += ['rel. flux']
+    table = Table()
+    table.add_column(param_names, name='#param_name')
+    table.add_column(best_guess, name='best_guess')
+    table.add_column([1]*len(param_names), name='fit')
+    table.add_column(priors, name='prior')
+    table.add_column(labels, name='label')
+    table.add_column(units, name='unit')
+    ascii.write(table, os.path.join(param_dir, 'params.csv'), overwrite=True, format='csv')
