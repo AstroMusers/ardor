@@ -570,8 +570,8 @@ def tier1(detrend_flux, sigma, fast=False, injection = False):
 
 def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
           output_dir = os.getcwd(), host_name = 'My_Host', T = 4000, 
-          host_radius = 1, csv = True, planet_period = 5, transit_epoch = 1000, peri_epoch = 1000,
-          Sim = False, injection = False, const = 0, extract_window = 50, catalog_name = 'All_Flare_Parameters.csv'):
+          host_radius = 1, csv = True, Sim = False, injection = False, const = 0, 
+          extract_window = 50, catalog_name = 'All_Flare_Parameters.csv'):
     '''
     Tier 2 of ardor. This function accepts the time, detrended flux, and error arrays from a TESS light curve,
     as well as the flare indices and lengths from tier 1, and fits exponential decay models to each flare.
@@ -692,13 +692,13 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
             flare_number.append(flare_count)
             chi_square_list.append(chi_squared)
             try:
-                X = np.column_stack((new_time, new_data, new_error))
+                X = np.column_stack((new_time/(24*60), new_data, new_error))
             except:
                 X = np.column_stack(([0],[0],[0]))
             accepted_flare_index.append(flares[index])
             accepted_flare_number.append(flare_count)
             if csv == True:
-                np.savetxt(output_dir + '/' + str(host_name) + '/Flare_' + str(flare_count + const) + '.csv', X, delimiter=',')
+                np.savetxt(os.path.join(output_dir, str(host_name), f'Flare_{flare_count + const}.csv'), X, delimiter=',')
             total_flares += 1
         
         else:
@@ -708,7 +708,7 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
         if len(TOI_ID_list) > 0:
             ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, peak_time_BJD, amplitude, time_scale, np.ones(len(amplitude))*T, np.ones(len(amplitude))*host_radius, chi_square_list))
             with open(output_dir + '/' + catalog_name, "a") as f:
-                np.savetxt(f, ['Host_ID','Flare_#','Flare_Epoch','Flare_Epoch_BJD','Amplitude','FWHM','Teff','R_Star','Chi_Sq.'], delimiter=",", fmt='%s')
+                np.savetxt(f, [['Host_ID','Flare_#','Flare_Epoch','Flare_Epoch_BJD','Amplitude','FWHM','Teff','R_Star','Chi_Sq.']], delimiter=",", fmt='%s')
                 np.savetxt(f, ZZ, delimiter=",", fmt='%s')
                 f.close()
     if Sim == False and injection == False:
@@ -720,7 +720,8 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
     if injection == True and Sim == False:
         return event_list
                     
-def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, settings_template_dir, params_template_dir, host_name = 'My_Host', T = 4000, host_radius = 1, MCMC_CPUS = 1):
+def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, settings_template_dir, params_template_dir, host_name = 'My_Host', T = 4000, host_radius = 1, MCMC_CPUS = 1,
+          priors = None, baseline = 'hybrid_spline'):
     '''
     Tier 3 of ardor. This function accepts the output directory of tier 2, and runs
     the MCMC fitting procedure on each flare found in tier 2, saving the results
@@ -753,7 +754,10 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, settings_tem
 
     '''
     ##List out the flare .csv files
-    os.listdir(tier_2_output_dir)
+    flare_csvs = os.listdir(tier_2_output_dir)
+    for flares in flare_csvs:
+        name = flares.replace('.csv','')
+        allesfitter_priors.construct_param_file(params_template_dir, priors, baseline = baseline, )
 
 ##EVE Related Functions (Solar)
 def EVE_detrend(data, time, return_trend = True):
