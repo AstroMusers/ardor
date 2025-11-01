@@ -571,7 +571,7 @@ def tier1(detrend_flux, sigma, fast=False, injection = False):
 def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
           output_dir = os.getcwd(), host_name = 'My_Host', T = 4000, 
           host_radius = 1, csv = True, Sim = False, injection = False, const = 0, 
-          extract_window = 50, catalog_name = 'All_Flare_Parameters.csv'):
+          extract_window = 50, catalog_name = 'All_Flare_Parameters.csv', header = False):
     '''
     Tier 2 of ardor. This function accepts the time, detrended flux, and error arrays from a TESS light curve,
     as well as the flare indices and lengths from tier 1, and fits exponential decay models to each flare.
@@ -708,7 +708,8 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
         if len(TOI_ID_list) > 0:
             ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, peak_time_BJD, amplitude, time_scale, np.ones(len(amplitude))*T, np.ones(len(amplitude))*host_radius, chi_square_list))
             with open(output_dir + '/' + catalog_name, "a") as f:
-                np.savetxt(f, [['Host_ID','Flare_#','Flare_Epoch','Flare_Epoch_BJD','Amplitude','FWHM','Teff','R_Star','Chi_Sq.']], delimiter=",", fmt='%s')
+                if header == True:
+                    np.savetxt(f, [['Host_ID','Flare_#','Flare_Epoch','Flare_Epoch_BJD','Amplitude','FWHM','Teff','R_Star','Chi_Sq.']], delimiter=",", fmt='%s')
                 np.savetxt(f, ZZ, delimiter=",", fmt='%s')
                 f.close()
     if Sim == False and injection == False:

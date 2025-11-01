@@ -4,9 +4,8 @@ Created on Thu Nov  2 11:48:26 2023
 
 @author: Nathan
 """
-
 import pandas as pd
-from scipy.optimize import curve_fit
+from scipy.ndimage import gaussian_filter1d
 from scipy.integrate import simpson
 import numpy as np
 import os
@@ -18,6 +17,8 @@ import allesfitter
 import astropy.io.ascii as ascii
 from astropy.table import Table
 import shutil
+import pandas as pd
+from matplotlib import pyplot as plt
 def find_nearest(array, value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
@@ -190,30 +191,30 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
             dlogZ = log_Z4[0][0] - log_Z3[0][0]
             return dlogZ
 
-def construct_param_file(output_dir, priors = None, baseline = 'hybrid_spline', 
+def construct_param_file(output_dir, peak_time_best_guess = None, peak_time_priors = None, baseline = 'hybrid_spline', 
                          model = 'flare', N=1, name = 'Flare'):
     if model == 'flare':
         if N == 0:
             param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
             if priors == None:
-                best_guess = [0, 0.01, 0.1]
-                priors = ['uniform -1 1', 'uniform 0 0.1', 'uniform 0 3']
+                best_guess = [peak_time_best_guess[0], 0.01, 0.1]
+                priors = [f'uniform -0.05 {peak_time_priors[0]}', 'uniform 0 0.1', 'uniform 0 3']
                 labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
             units = ['days', 'days', 'rel. flux']
         if N == 1:
             param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
             if priors == None:
-                best_guess = [0, 0.01, 0.1]
-                priors = ['uniform -0.01 0.0025', 'uniform 0 0.1', 'uniform 0 3']
+                best_guess = [peak_time_best_guess[0], 0.01, 0.1]
+                priors = [f'uniform -0.01 {peak_time_priors[0]}', 'uniform 0 0.1', 'uniform 0 3']
                 labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
             units = ['days', 'days', 'rel. flux']
         elif N == 2:
             param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1',
                            'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2']
             if priors == None:
-                best_guess = [0, 0.01, 0.1, 0.0035, 0.01, 0.1]
-                priors = ['uniform -0.01 0.0025', 'uniform 0 0.1', 'uniform 0 3', 
-                          'uniform 0.0025 0.02', 'uniform 0 0.1', 'uniform 0 3']
+                best_guess = [peak_time_best_guess[0], 0.01, 0.1, peak_time_best_guess[1], 0.01, 0.1]
+                priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.1', 'uniform 0 3', 
+                          f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.1', 'uniform 0 3']
                 labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
                             'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
             units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
@@ -222,10 +223,10 @@ def construct_param_file(output_dir, priors = None, baseline = 'hybrid_spline',
                            'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2',
                            'flare_tpeak_3', 'flare_fwhm_3', 'flare_ampl_3']
             if priors == None:
-                best_guess = [0, 0.05, 0.1, 0.01, 0.0035, 0.1, 0.02, 0.0075, 0.1]
-                priors = ['uniform -0.01 0.0025', 'uniform 0 0.5', 'uniform 0 3', 
-                          'uniform 0.0025 0.02', 'uniform 0 0.5', 'uniform 0 3',
-                          'uniform 0.02 0.03', 'uniform 0 0.5', 'uniform 0 3']
+                best_guess = [peak_time_best_guess[0], 0.05, 0.1, peak_time_best_guess[1], 0.0035, 0.1, peak_time_best_guess[2], 0.0075, 0.1]
+                priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.5', 'uniform 0 3', 
+                          f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.5', 'uniform 0 3',
+                          f'uniform {peak_time_priors[2][0]} {peak_time_priors[2][1]}', 'uniform 0 0.5', 'uniform 0 3']
                 labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
                             'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.',
                             'Flare3_Time', 'Flare3_FWHM', 'Flare3_Amp.']
@@ -289,79 +290,75 @@ def construct_settings_file(settings_file_dir, working_dir, baseline = 'hybrid_s
     table['value'][table['#name'] == 'N_flares'] = N
     ascii.write(table, os.path.join(working_dir, 'settings.csv'), overwrite=True, format='csv')
 
-def find_subsequent_peaks(time, data):
-    """
-    Find subsequent peaks in time series data after the main peak at t=0.
-    
+def slice_flare(time, data):
+    '''
+    Slices flare data to only include data around the flare event.
+
     Parameters
     ----------
-    time : array-like
-        Time array with the main peak guaranteed to be at time = 0
-    data : array-like
-        Flux data array corresponding to the time array
-        
+    time : numpy array
+        Time axis data.
+    data : numpy array
+        Flux axis data.
+
     Returns
     -------
-    list
-        List of times where subsequent peaks occur, only when data is at least
-        1 standard deviation above the initial baseline flux
-    """
-    time = np.array(time)
-    data = np.array(data)
-    
-    # Find the main peak at t=0 (or closest to 0)
-    main_peak_idx = 0
-    
-    # Calculate baseline flux from data before the main peak
-    # Use data points that are at least 10% of the time range before the main peak
-    time_range = np.max(time) - np.min(time)
-    baseline_mask = time < (time[main_peak_idx] - 0.1 * time_range)
-    
-    if np.sum(baseline_mask) < 2:
-        # If not enough baseline points, use first 10% of data points
-        n_baseline = max(2, len(time) // 10)
-        baseline_flux = data[:n_baseline]
-    else:
-        baseline_flux = data[baseline_mask]
-    
-    # Calculate baseline statistics
-    baseline_mean = np.mean(baseline_flux)
-    baseline_std = np.std(baseline_flux)*3
-    threshold = baseline_mean + baseline_std
-    
-    # Only look for peaks after the main peak
-    after_peak_mask = time > time[main_peak_idx]
-    time_after = time[after_peak_mask]
-    data_after = data[after_peak_mask]
-    
-    # Only consider data points above the threshold
-    above_threshold_mask = data_after >= threshold
-    
-    if np.sum(above_threshold_mask) < 3:
-        # Not enough points above threshold to find peaks
-        return []
-    
-    time_valid = time_after[above_threshold_mask]
-    data_valid = data_after[above_threshold_mask]
-    
-    # Find local maxima
+    time_slice : numpy array
+        Sliced time axis data.
+    data_slice : numpy array
+        Sliced flux axis data.
+
+    '''
+    peak_flux = np.max(data)
+    peak_index = np.where(data == peak_flux)[0][0]
+    std_dev = np.std(data[:peak_index])
+    median = np.median(data[:peak_index])
+    idx = 0
+    for points in data[peak_index:]:
+        if points > 3*std_dev + median:
+            idx += 1
+    return time[peak_index:peak_index+idx], data[peak_index:peak_index+idx]
+
+def find_local_maxima(time, data):
+    '''
+    Finds local maxima and minima in the flare data.
+
+    Parameters
+    ----------
+    time : numpy array
+        Time axis data.
+    data : numpy array
+        Flux axis data.
+
+    Returns
+    -------
+    peak_times : list
+        List of times where local maxima occur.
+    min_times : list
+        List of times where local minima occur.
+    '''
+    smoothed_data = gaussian_filter1d(data, sigma=1.1)
     peak_times = []
-    
-    # Need at least 3 points to find a local maximum
-    if len(data_valid) >= 3:
-        for i in range(1, len(data_valid) - 1):
-            # Check if current point is a local maximum
-            if (data_valid[i] > data_valid[i-1] and 
-                data_valid[i] > data_valid[i+1]):
-                peak_times.append(time_valid[i])
-    
-    return peak_times
-# data = pd.read_csv("/ugrad/whitsett.n/ardor_test/AUMic/Flare_28.csv", header=None)
-# time = data[0]
-# flux = data[1]
-# subsequent_peaks = find_subsequent_peaks(time, flux)
-# print(subsequent_peaks)
-data_dir = "/ugrad/whitsett.n/ardor_test/AUMic/Flare_28.csv"
-working_dirs = ["/ugrad/whitsett.n/ardor_test/Working_Dirs/Baseline", "/ugrad/whitsett.n/ardor_test/Working_Dirs/1Flare", "/ugrad/whitsett.n/ardor_test/Working_Dirs/2Flare", "/ugrad/whitsett.n/ardor_test/Working_Dirs/3Flare"]
-template = ""
-multipeak_model_compare(data_dir, working_dirs, "/ugrad/whitsett.n/ardor/templates", baseline='hybrid_spline', N_models=3)
+    min_times = []
+    for i in range(1, len(smoothed_data)-1):
+        if smoothed_data[i] > smoothed_data[i-1] and smoothed_data[i] > smoothed_data[i+1]:
+            peak_times.append(time[i])
+        elif smoothed_data[i] < smoothed_data[i-1] and smoothed_data[i] < smoothed_data[i+1]:
+            min_times.append(time[i])
+        if len(peak_times) > 3:
+            break
+    return peak_times, min_times
+def return_flare_time_priors(peak_times, min_times):
+    priors = []
+    try:
+        priors.append([-0.02, min_times[0]])
+    except IndexError:
+        priors.append([-0.02, 0.02])
+    for idx, t in enumerate(min_times):
+        prior_lower = t
+        try:
+            prior_upper = peak_times[idx] + min_times[idx + 1]
+        except IndexError:
+            prior_upper = t + 0.02
+        priors.append([prior_lower, prior_upper])
+    return priors
