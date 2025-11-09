@@ -142,6 +142,10 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
         raise ValueError("Working dirs length does not match number of models.")
     csv_cleaner(target_file)
     file_num = os.path.basename(target_file).split('.csv')[0]
+    slice_time, slice_data = slice_flare(np.array(pd.read_csv(target_file, header=None)[0]), np.array(pd.read_csv(target_file, header=None)[1]))
+    peak_times, min_times = find_local_maxima(slice_time, slice_data)
+    peak_time_best_guess = peak_times
+    peak_time_priors = return_flare_time_priors(peak_times, min_times)
     log_Z1 = 0
     log_Z2 = 0
     log_Z3 = 0
@@ -151,7 +155,8 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
     for idx, working_dir in enumerate(working_dirs):
         ## Determine Bayes Factor for baseline model
         if idx == 0:
-            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num)
+            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
+                                 peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors)
             construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             allesfitter.ns_fit(working_dir)
@@ -159,7 +164,9 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
             log_Z1 = allesfitter.get_logZ(working_dir)
         ## Determine Bayes Factor for N=1 model
         if idx == 1:
-            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num)
+            print(idx)
+            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
+                                 peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors)
             construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             allesfitter.ns_fit(working_dir)
@@ -171,7 +178,8 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
                 return dlogZ
         ## If change in Bayes Factor >= 5, continue to next model
         if idx == 2:
-            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num)
+            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
+                                 peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors)
             construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             allesfitter.ns_fit(working_dir)
@@ -182,7 +190,8 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             return dlogZ
         if idx == 3:
-            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num)
+            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
+                                 peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors)
             construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             allesfitter.ns_fit(working_dir)
@@ -191,61 +200,67 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
             dlogZ = log_Z4[0][0] - log_Z3[0][0]
             return dlogZ
 
-def construct_param_file(output_dir, peak_time_best_guess = None, peak_time_priors = None, baseline = 'hybrid_spline', 
-                         model = 'flare', N=1, name = 'Flare'):
-    if model == 'flare':
-        if N == 0:
-            param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
-            if priors == None:
-                best_guess = [peak_time_best_guess[0], 0.01, 0.1]
-                priors = [f'uniform -0.05 {peak_time_priors[0]}', 'uniform 0 0.1', 'uniform 0 3']
+def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_priors = None, baseline = 'hybrid_spline', 
+                         model = 'flare', N=1, name = 'Flare', custom_priors = False, priors = None):
+    if len(peak_time_best_guess) > 3 and N == 3:
+        peak_time_best_guess = peak_time_best_guess[:3]
+        peak_time_priors = peak_time_priors[:3]
+        print("Number of peak time best guesses exceeds 3. Only first 3 will be used.")
+    elif len(peak_time_best_guess) != N and N > 0:
+        peak_time_best_guess = peak_time_best_guess[:N]
+        peak_time_priors = peak_time_priors[:N]
+        print("Number of peak time best guesses does not match N. Only using first N best guesses.")
+    if custom_priors == False:
+        if model == 'flare':
+            if N == 0:
+                param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
+                best_guess = [-0.02, 0.01, 0.1]
+                priors = [f'uniform -0.05 {peak_time_priors[0][1]}', 'uniform 0 0.1', 'uniform 0 3']
                 labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
-            units = ['days', 'days', 'rel. flux']
-        if N == 1:
-            param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
-            if priors == None:
+                units = ['days', 'days', 'rel. flux']
+            if N == 1:
+                param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
                 best_guess = [peak_time_best_guess[0], 0.01, 0.1]
-                priors = [f'uniform -0.01 {peak_time_priors[0]}', 'uniform 0 0.1', 'uniform 0 3']
+                priors = [f'uniform -0.01 {peak_time_priors[0][1]}', 'uniform 0 0.1', 'uniform 0 3']
                 labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
-            units = ['days', 'days', 'rel. flux']
-        elif N == 2:
-            param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1',
-                           'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2']
-            if priors == None:
+                units = ['days', 'days', 'rel. flux']
+            elif N == 2:
+                param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1',
+                            'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2']
                 best_guess = [peak_time_best_guess[0], 0.01, 0.1, peak_time_best_guess[1], 0.01, 0.1]
                 priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.1', 'uniform 0 3', 
-                          f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.1', 'uniform 0 3']
+                            f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.1', 'uniform 0 3']
                 labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
                             'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
-            units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
-        elif N == 3:
-            param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1',
-                           'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2',
-                           'flare_tpeak_3', 'flare_fwhm_3', 'flare_ampl_3']
-            if priors == None:
-                best_guess = [peak_time_best_guess[0], 0.05, 0.1, peak_time_best_guess[1], 0.0035, 0.1, peak_time_best_guess[2], 0.0075, 0.1]
+                units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
+            elif N == 3:
+                param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1',
+                            'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2',
+                            'flare_tpeak_3', 'flare_fwhm_3', 'flare_ampl_3']
+                best_guess = [peak_time_best_guess[0], 0.01, 0.1, peak_time_best_guess[1], 0.01, 0.1, peak_time_best_guess[2], 0.01, 0.1]
                 priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.5', 'uniform 0 3', 
-                          f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.5', 'uniform 0 3',
-                          f'uniform {peak_time_priors[2][0]} {peak_time_priors[2][1]}', 'uniform 0 0.5', 'uniform 0 3']
+                            f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.5', 'uniform 0 3',
+                            f'uniform {peak_time_priors[2][0]} {peak_time_priors[2][1]}', 'uniform 0 0.5', 'uniform 0 3']
                 labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
                             'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.',
                             'Flare3_Time', 'Flare3_FWHM', 'Flare3_Amp.']
-            units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux',
-                        'days', 'days', 'rel. flux']
-    if baseline == 'sample_GP_Matern32':
-        param_names += [f'ln_err_flux_{name}', f'baseline_gp_offset_flux_{name}', f'baseline_gp_matern32_lnsigma_flux_{name}', 
-                        f'baseline_gp_matern32_lnrho_flux_{name}']
-        best_guess += [-7,0,-5, 0]
-        priors += ['uniform -10 -2', 'uniform -0.02 0.02', 'uniform -15 0', 'uniform 0 15']
-        labels += [f'ln_err_flux_{name}', rf'GP_Matern32_Baseline_{name}', rf'GP_Matern32_ln$sigma$_{name}', 
-                   rf'GP_Matern32_ln$rho$_{name}']
-        units += ['rel. flux', 'rel. flux', '', '']
-    elif baseline == 'hybrid_spline':
-        param_names += [f'ln_err_flux_{name}']
-        best_guess += [-7]
-        priors += ['uniform -10 -2']
-        labels += [f'ln_err_flux_{name}']
-        units += ['rel. flux']
+                units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux',
+                            'days', 'days', 'rel. flux']
+        if baseline == 'sample_GP_Matern32':
+            param_names += [f'ln_err_flux_{name}', f'baseline_gp_offset_flux_{name}', f'baseline_gp_matern32_lnsigma_flux_{name}', 
+                            f'baseline_gp_matern32_lnrho_flux_{name}']
+            best_guess += [-7,0,-5, 0]
+            priors += ['uniform -10 -2', 'uniform -0.02 0.02', 'uniform -15 0', 'uniform 0 15']
+            labels += [f'ln_err_flux_{name}', rf'GP_Matern32_Baseline_{name}', rf'GP_Matern32_ln$sigma$_{name}', 
+                    rf'GP_Matern32_ln$rho$_{name}']
+            units += ['rel. flux', 'rel. flux', '', '']
+        elif baseline == 'hybrid_spline':
+            param_names += [f'ln_err_flux_{name}']
+            best_guess += [-7]
+            priors += ['uniform -10 -2']
+            labels += [f'ln_err_flux_{name}']
+            units += ['rel. flux']
+    print(len(param_names), len(best_guess), len(priors), len(labels), len(units))
     table = Table()
     table.add_column(param_names, name='#name')
     table.add_column(best_guess, name='value')
@@ -341,24 +356,27 @@ def find_local_maxima(time, data):
     peak_times = []
     min_times = []
     for i in range(1, len(smoothed_data)-1):
+        if len(peak_times) >= 3:
+            break
         if smoothed_data[i] > smoothed_data[i-1] and smoothed_data[i] > smoothed_data[i+1]:
             peak_times.append(time[i])
         elif smoothed_data[i] < smoothed_data[i-1] and smoothed_data[i] < smoothed_data[i+1]:
             min_times.append(time[i])
-        if len(peak_times) > 3:
-            break
     return peak_times, min_times
 def return_flare_time_priors(peak_times, min_times):
     priors = []
-    try:
-        priors.append([-0.02, min_times[0]])
-    except IndexError:
-        priors.append([-0.02, 0.02])
     for idx, t in enumerate(min_times):
-        prior_lower = t
-        try:
-            prior_upper = peak_times[idx] + min_times[idx + 1]
-        except IndexError:
-            prior_upper = t + 0.02
-        priors.append([prior_lower, prior_upper])
+        if idx == 0:
+            try:
+                priors.append([-0.02, min_times[0]])
+            except IndexError:
+                priors.append([-0.02, 0.02])
+                return priors
+        elif idx != 0:
+            prior_lower = t
+            try:
+                prior_upper = peak_times[idx] + min_times[idx + 1]
+            except IndexError:
+                prior_upper = t + 0.02
+            priors.append([prior_lower, prior_upper])
     return priors

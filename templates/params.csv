@@ -1,9 +1,2 @@
-#name,value,fit,bounds,label,unit,
-#flares,,,,,,
-flare_tpeak_1,0.3,1,uniform 0.2 0.4,flare_tpeak_1,days
-flare_fwhm_1,0.1,1,uniform 0 0.2,flare_fwhm_1,days
-flare_ampl_1,0.01,1,uniform 0 0.05,flare_ampl_1,rel. flux
-#errors (overall scaling) per instrument,,,,,,
-ln_err_flux_Flaronardo,-7,1,uniform -9 -5,$\log{\sigma_\mathrm{Flaronardo}}$,log rel. flux
-baseline_gp_matern32_lnsigma_flux_Flaronardo, 1
-baseline_gp_matern32_lnrho_flux_Flaronardo, 1
+#param_name,best_guess,fit,prior,label,unit
+ln_err_flux_Flare1,-7,1,uniform -10 -2,ln_err_flux_Flare1,rel. flux

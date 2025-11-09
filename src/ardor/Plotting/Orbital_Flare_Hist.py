@@ -16,21 +16,21 @@ import ardor.Statistical_Tests.MLE as MLE
 import matplotlib.cm as cm
 import matplotlib.colors as colors
 import os
-for fontpath in font_manager.findSystemFonts():
-    if 'lmroman10-regular' in fontpath.lower():
-        path = fontpath
-    if 'lmroman10-italic' in fontpath.lower():
-        italicpath = fontpath
+# for fontpath in font_manager.findSystemFonts():
+#     if 'lmroman10-regular' in fontpath.lower():
+#         path = fontpath
+#     if 'lmroman10-italic' in fontpath.lower():
+#         italicpath = fontpath
 
 # Register and get name
-font_manager.fontManager.addfont(path)
-font_manager.fontManager.addfont(italicpath)
+# font_manager.fontManager.addfont(path)
+# font_manager.fontManager.addfont(italicpath)
 
-font = FontProperties(fname=path)
-font_name = font.get_name()
+# font = FontProperties(fname=path)
+# font_name = font.get_name()
 
-rcParams["font.family"] = font_name
-rcParams["mathtext.fontset"] = "cm"
+# rcParams["font.family"] = font_name
+# rcParams["mathtext.fontset"] = "cm"
 
 def color_map(data, c='viridis'):
     # Define min and max for normalization
@@ -163,8 +163,8 @@ def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, omega_p = 0, title = "Ti
     
     if alfven != None:
         alfven_guess = alfven[0]
-        alfven_upper = alfven[1]
-        alfven_lower = alfven[2]
+        # alfven_upper = alfven[1]
+        # alfven_lower = alfven[2]
     phases = np.linspace(0, 2*np.pi, num=10000)
     thetas = np.linspace(-np.pi, np.pi, num= 10000)
         
@@ -257,21 +257,21 @@ def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, omega_p = 0, title = "Ti
                            linewidth=0.5)
     if TOI == False:
         ax.plot(phases, orbit, linestyle='-', color='black', linewidth=1.25, label = 'Orbit')
-    ax.set_rlim(0,0.7)
+    ax.set_rlim(0,0.15)
     ax.set_yticks([])
     ax.set_yticklabels([])
     ax.set_xticks([])
-    ax.set_xticklabels([], font=font, zorder=0)
+    ax.set_xticklabels([], zorder=0)
     if omega_p != 0:
         ax.vlines(np.pi, ymin=0, ymax=orbit_pos(e,a,np.pi), zorder=3,color='black',linestyle='--', label = 'Periastron')
-    ax.set_title(title, font=font, fontsize=14)
+    ax.set_title(title, fontsize=14)
     loc, kappa, TS = MLE.VM_Unbinned_likelihood(flare_phases)
     loc = UT.range_shift(loc, 0,1,-np.pi, np.pi)
     PDF = vonmises.pdf(thetas, loc=loc, kappa=kappa)
     ax.plot(thetas, (PDF/np.max(PDF))*orbit_pos(e,a,loc), linestyle = '-', color='magenta', label = 'VM PDF', linewidth=1)
     plt.fill(thetas, star_rad*np.ones(len(thetas)), zorder=4, c=star_cl, edgecolor='black', linewidth=0.5)
     if scale == True:
-        plt.annotate('0.3 AU', (np.pi, 0.3), (np.pi -0.785398163 ,0.42426406871) 
+        plt.annotate('0.1 AU', (np.pi, 0.1), (3*np.pi/4,0.141414) 
                      ,arrowprops=dict(facecolor='black', width=4, headlength=0.0000001, headwidth=0.00000001), fontsize=11)
     # ax.vlines(theta_center, ymin=0, ymax=orbit_pos(e,a,theta_center), color='black', linestyle='-', linewidth=1.0, label = r"$t_{{mid}}$")
     if alfven != None and alfven_bool == True:
