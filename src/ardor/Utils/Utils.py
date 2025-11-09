@@ -292,3 +292,75 @@ def add_list_to_csv(csv_path, new_column_name, values_list, output_path=None):
     if output_path is None:
         output_path = csv_path
     df.to_csv(output_path, index=False)
+
+def extract_parameters(work_dir):
+    """
+    Extracts parameters from a specified working directory.
+
+    Parameters
+    ----------
+    work_dir : str
+        Path to the working directory.
+
+    Returns
+    -------
+    params : dict
+        Dictionary containing extracted parameters.
+
+    """
+    result_dir = os.path.join(work_dir, 'results')
+    files = os.listdir(result_dir)
+    flare_param = []
+    for file in files:
+        if file == 'ns_table.csv':
+            params_table = pd.read_csv(os.path.join(result_dir, file))
+            N_flare = 1
+            for param_names in params_table['#name']:
+                if 'flare' in param_names:
+                    flare_int = int(param_names[-1])
+                    if flare_int > N_flare:
+                        N_flare = flare_int
+            for flares in range(N_flare):
+                amplitude_median = params_table.loc[params_table['#name'] == f'flare_ampl_{flares+1}', 'median'].values[0]
+                amplitude_lower = params_table.loc[params_table['#name'] == f'flare_ampl_{flares+1}', 'lower_error'].values[0]
+                amplitude_upper = params_table.loc[params_table['#name'] == f'flare_ampl_{flares+1}', 'upper_error'].values[0]
+                epoch_median = params_table.loc[params_table['#name'] == f'flare_tpeak_{flares+1}', 'median'].values[0]
+                epoch_lower = params_table.loc[params_table['#name'] == f'flare_tpeak_{flares+1}', 'lower_error'].values[0]
+                epoch_upper = params_table.loc[params_table['#name'] == f'flare_tpeak_{flares+1}', 'upper_error'].values[0]
+                fwhm_median = params_table.loc[params_table['#name'] == f'flare_fwhm_{flares+1}', 'median'].values[0]
+                fwhm_lower = params_table.loc[params_table['#name'] == f'flare_fwhm_{flares+1}', 'lower_error'].values[0]
+                fwhm_upper = params_table.loc[params_table['#name'] == f'flare_fwhm_{flares+1}', 'upper_error'].values[0]
+                params = {'amplitude': [amplitude_median, amplitude_lower, amplitude_upper], 'epoch': [epoch_median, epoch_lower, epoch_upper],
+                          'fwhm': [fwhm_median, fwhm_lower, fwhm_upper]}
+                flare_param.append(params)
+    return flare_param
+
+def copy_output(work_dir, extensions_to_copy, destination_dir):
+    """
+    Copies specified files from the working directory to the destination directory.
+
+    Parameters
+    ----------
+    work_dir : str
+        Path to the working directory.
+    files_to_copy : list of str
+        List of filenames to copy.
+    destination_dir : str
+        Path to the destination directory.
+
+    Returns
+    -------
+    None.
+
+    """
+    files = os.listdir(os.path.join(work_dir, 'results'))
+    for file_name in files:
+        for ext in extensions_to_copy:
+            if file_name.endswith(ext):
+                source_path = os.path.join(work_dir, file_name)
+                dest_path = os.path.join(destination_dir, file_name)
+        if os.path.exists(source_path):
+            os.system(f'cp {source_path} {dest_path}')
+        else:
+            print(f'File {file_name} does not exist in {work_dir}. Skipping.')
+
