@@ -11,6 +11,7 @@ import math
 import os
 from astropy.table import Table
 from astropy.io import ascii
+
 warnings.filterwarnings("ignore")
 def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[], output_dir = None, specifier_column = None):
     '''
@@ -334,7 +335,7 @@ def extract_parameters(work_dir):
                           'fwhm': [fwhm_median, fwhm_lower, fwhm_upper]}
                 flare_param.append(params)
     return flare_param
-
+                        
 def copy_output(work_dir, extensions_to_copy, destination_dir):
     """
     Copies specified files from the working directory to the destination directory.
@@ -363,5 +364,3 @@ def copy_output(work_dir, extensions_to_copy, destination_dir):
             os.system(f'cp {source_path} {dest_path}')
         else:
             print(f'File {file_name} does not exist in {work_dir}. Skipping.')
-
-de

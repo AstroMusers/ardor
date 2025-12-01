@@ -4,6 +4,7 @@ Created on Thu Nov  2 11:48:26 2023
 
 @author: Nathan
 """
+#%%
 import pandas as pd
 from scipy.ndimage import gaussian_filter1d
 from scipy.integrate import simpson
@@ -12,7 +13,7 @@ import os
 from ardor.Flares import aflare
 import math
 from ardor.Utils.planck_law import planck_law, planck_integrator
-from ardor.Utils.Utils import asymmetric_sample
+from ardor.Utils.Utils import asymmetric_sample, find_nearest
 import allesfitter
 import astropy.io.ascii as ascii
 from astropy.table import Table
@@ -174,8 +175,8 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
             log_Z2 = allesfitter.get_logZ(working_dir)
             ## If change in Bayes Factor < 5, exit and return dlogZ
             dlogZ = log_Z2[0][0] - log_Z1[0][0]
-            if dlogZ < 5:
-                return dlogZ
+        if dlogZ < 2:
+            return dlogZ
         ## If change in Bayes Factor >= 5, continue to next model
         if idx == 2:
             construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
@@ -186,7 +187,7 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
             allesfitter.ns_output(working_dir)
             log_Z3 = allesfitter.get_logZ(working_dir)
             dlogZ = log_Z3[0][0] - log_Z2[0][0]
-        if dlogZ < 5:
+        if dlogZ < 2:
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             return dlogZ
         if idx == 3:
@@ -206,10 +207,6 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
         peak_time_best_guess = peak_time_best_guess[:3]
         peak_time_priors = peak_time_priors[:3]
         print("Number of peak time best guesses exceeds 3. Only first 3 will be used.")
-    elif len(peak_time_best_guess) != N and N > 0:
-        peak_time_best_guess = peak_time_best_guess[:N]
-        peak_time_priors = peak_time_priors[:N]
-        print("Number of peak time best guesses does not match N. Only using first N best guesses.")
     if custom_priors == False:
         if model == 'flare':
             if N == 0:
@@ -324,15 +321,8 @@ def slice_flare(time, data):
         Sliced flux axis data.
 
     '''
-    peak_flux = np.max(data)
-    peak_index = np.where(data == peak_flux)[0][0]
-    std_dev = np.std(data[:peak_index])
-    median = np.median(data[:peak_index])
-    idx = 0
-    for points in data[peak_index:]:
-        if points > 3*std_dev + median:
-            idx += 1
-    return time[peak_index:peak_index+idx], data[peak_index:peak_index+idx]
+    index = find_nearest(time, 0)[1]
+    return time[index:], data[index:]
 
 def find_local_maxima(time, data):
     '''
@@ -353,30 +343,87 @@ def find_local_maxima(time, data):
         List of times where local minima occur.
     '''
     smoothed_data = gaussian_filter1d(data, sigma=1.1)
-    peak_times = []
+    peak_times = [0]
     min_times = []
     for i in range(1, len(smoothed_data)-1):
-        if len(peak_times) >= 3:
+        if len(peak_times) > 3:
             break
         if smoothed_data[i] > smoothed_data[i-1] and smoothed_data[i] > smoothed_data[i+1]:
             peak_times.append(time[i])
         elif smoothed_data[i] < smoothed_data[i-1] and smoothed_data[i] < smoothed_data[i+1]:
             min_times.append(time[i])
+    if len(peak_times) > 3:
+        peak_times = peak_times[:3]
+    if len(min_times) > 3:
+        min_times = min_times[:3]
     return peak_times, min_times
 def return_flare_time_priors(peak_times, min_times):
     priors = []
-    for idx, t in enumerate(min_times):
+    for idx, t in enumerate(peak_times):
         if idx == 0:
-            try:
-                priors.append([-0.02, min_times[0]])
-            except IndexError:
-                priors.append([-0.02, 0.02])
-                return priors
+            prior_lower = -0.02
+            prior_upper = 0 + min_times[0]
         elif idx != 0:
-            prior_lower = t
             try:
-                prior_upper = peak_times[idx] + min_times[idx + 1]
+                prior_lower = min_times[idx - 1]
+                prior_upper = min_times[idx]
             except IndexError:
-                prior_upper = t + 0.02
-            priors.append([prior_lower, prior_upper])
+                prior_upper = t + 0.002
+                prior_lower = min_times[-1]
+        priors.append([prior_lower, prior_upper])
     return priors
+def save_params_to_csv(params, Teff, Rst, dlogZ, output_csv):
+    """_summary_
+
+    Args:
+        params (_type_): _description_
+        Teff (_type_): _description_
+        Rst (_type_): _description_
+        dlogZ (_type_): _description_
+        output_csv (_type_): _description_
+    """
+    if len(params) == 1:
+        energy = flare_energy([ params[0]['epoch'][0], params[0]['fwhm'][0],  params[0]['amplitude'][0]], Teff[0], Rst[0],
+                                               [ params[0]['epoch'][1]],[ params[0]['fwhm'][1],  params[0]['amplitude'][1]],
+                                               [ params[0]['epoch'][2]],[ params[0]['fwhm'][2],  params[0]['amplitude'][2]], Teff[1], Teff[2],
+                                               Rst[1], Rst[2], N = len(flares), N_samp = 1000)
+    if len(params) == 2:
+        energy = flare_energy([params[0]['epoch'][0], params[0]['fwhm'][0],  params[0]['amplitude'][0], params[1]['epoch'][0], 
+                               params[1]['fwhm'][0],  params[1]['amplitude'][0]], Teff[0], Rst[0],
+                                        [params[0]['epoch'][1],params[0]['fwhm'][1],  params[0]['amplitude'][1], 
+                                        params[1]['epoch'][1],params[1]['fwhm'][1],  params[1]['amplitude'][1]],
+                                        [params[0]['epoch'][2], params[0]['fwhm'][2],  params[0]['amplitude'][2], 
+                                         params[1]['epoch'][2], params[1]['fwhm'][2],  params[1]['amplitude'][2]], 
+                                        Teff[1], Teff[2],Rst[1], Rst[2], N = len(flares), N_samp = 1000)
+    if len(params) == 3:
+        energy = flare_energy([params[0]['epoch'][0], params[0]['fwhm'][0],  params[0]['amplitude'][0], params[1]['epoch'][0], 
+                               params[1]['fwhm'][0],  params[1]['amplitude'][0], params[2]['epoch'][0], 
+                               params[2]['fwhm'][0],  params[2]['amplitude'][0]], Teff[0], Rst[0],
+                                        [params[0]['epoch'][1],params[0]['fwhm'][1],  params[0]['amplitude'][1], 
+                                        params[1]['epoch'][1],params[1]['fwhm'][1],  params[1]['amplitude'][1],
+                                        params[2]['epoch'][1],params[2]['fwhm'][1],  params[2]['amplitude'][1]],
+                                        [params[0]['epoch'][2], params[0]['fwhm'][2],  params[0]['amplitude'][2], 
+                                         params[1]['epoch'][2], params[1]['fwhm'][2],  params[1]['amplitude'][2],
+                                         params[2]['epoch'][2], params[2]['fwhm'][2],  params[2]['amplitude'][2]], 
+                                        Teff[1], Teff[2],Rst[1], Rst[2], N = len(flares), N_samp = 1000)
+    for flares in params:
+        if output_csv != None:
+            os.makedirs(output_csv, exist_ok=True)
+            ZZ = np.column_stack((flares['epoch'][0], flares['epoch'][0] + 2457000, flares['epoch'][1], flares['epoch'][2],
+                                  flares['amplitude'][0], flares['amplitude'][1], flares['amplitude'][2],
+                                  flares['fwhm']['0'], flares['fwhm'][1], flares['fwhm'][2], energy[0], energy[1], energy[2],
+                                  dlogZ))
+            with open(output_csv + '/Tier_3_Flare_Params.csv', "a") as f:
+                np.savetxt(f, ZZ, delimiter=",", fmt='%s')
+working_dirs = ["/ugrad/whitsett.n/ardor_test/Working_Dirs/Baseline", "/ugrad/whitsett.n/ardor_test/Working_Dirs/1Flare", "/ugrad/whitsett.n/ardor_test/Working_Dirs/2Flare",
+                 "/ugrad/whitsett.n/ardor_test/Working_Dirs/3Flare"]
+# data = pd.read_csv("/ugrad/whitsett.n/ardor_test/AUMic/Flare_56.csv", header=None)
+
+# time, flux = slice_flare(np.array(data[0]), np.array(data[1]))
+# plt.plot(data[0], data[1])
+# peaks, mins = find_local_maxima(time, flux)
+# print(peaks, mins)
+# priors = return_flare_time_priors(peaks, mins)
+multipeak_model_compare("/ugrad/whitsett.n/ardor_test/AUMic/Flare_56.csv", working_dirs, "/ugrad/whitsett.n/ardor/templates")
+
+# %%
