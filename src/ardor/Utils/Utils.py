@@ -336,7 +336,7 @@ def extract_parameters(work_dir):
                 flare_param.append(params)
     return flare_param
                         
-def copy_output(work_dir, extensions_to_copy, destination_dir):
+def copy_output(work_dir, files_to_copy, destination_dir):
     """
     Copies specified files from the working directory to the destination directory.
 
@@ -356,8 +356,8 @@ def copy_output(work_dir, extensions_to_copy, destination_dir):
     """
     files = os.listdir(os.path.join(work_dir, 'results'))
     for file_name in files:
-        for ext in extensions_to_copy:
-            if file_name.endswith(ext):
+        for ext in files_to_copy:
+            if file_name.startswith(ext):
                 source_path = os.path.join(work_dir, file_name)
                 dest_path = os.path.join(destination_dir, file_name)
         if os.path.exists(source_path):
