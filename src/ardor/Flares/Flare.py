@@ -569,8 +569,7 @@ def tier1(detrend_flux, sigma, fast=False, injection = False):
     return flare
 
 def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
-          output_dir = os.getcwd(), host_name = 'My_Host', T = 4000, 
-          host_radius = 1, csv = True, Sim = False, injection = False, const = 0, 
+          output_dir = os.getcwd(), host_name = 'My_Host', csv = True, Sim = False, injection = False, const = 0, 
           extract_window = 50, catalog_name = 'All_Flare_Parameters.csv', header = False):
     '''
     Tier 2 of ardor. This function accepts the time, detrended flux, and error arrays from a TESS light curve,
@@ -595,11 +594,6 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
         Intended as the first output from tier 2.
     output_dir : string
         The directory in which you wish to save the flare csv files to.
-    Teff : float
-        The effective stellar temperature of the host star. If not passed, 4000 K will be assumed. Used to estimate 
-        flare energies.
-    host_radiu : float
-        The radius of the host star. If not passed, a value of 1 solar radii is assumed. Used to estimate the flare energies.
 
     Returns
     -------
@@ -631,6 +625,7 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
             new_error = pdcsap_error[flare_events:]
             check = 3
         norm_time = time[flare_events]
+        BJD = norm_time + 2457000
         new_time = (new_time - norm_time)*24*60
         if check == 1:
             events = extract_window
@@ -698,7 +693,7 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
             accepted_flare_index.append(flares[index])
             accepted_flare_number.append(flare_count)
             if csv == True:
-                np.savetxt(os.path.join(output_dir, str(host_name), f'Flare_{flare_count + const}.csv'), X, delimiter=',')
+                np.savetxt(os.path.join(output_dir, str(host_name), f'Flare_{flare_count + const}.csv'), X, delimiter=',', header=f'{BJD}')
             total_flares += 1
         
         else:
@@ -706,23 +701,23 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
     if output_dir != None:
         os.makedirs(output_dir, exist_ok=True)
         if len(TOI_ID_list) > 0:
-            ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, peak_time_BJD, amplitude, time_scale, np.ones(len(amplitude))*T, np.ones(len(amplitude))*host_radius, chi_square_list))
+            ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, peak_time_BJD, amplitude, time_scale,chi_square_list))
             with open(output_dir + '/' + catalog_name, "a") as f:
                 if header == True:
-                    np.savetxt(f, [['Host_ID','Flare_#','Flare_Epoch','Flare_Epoch_BJD','Amplitude','FWHM','Teff','R_Star','Chi_Sq.']], delimiter=",", fmt='%s')
+                    np.savetxt(f, [['Host_ID','Flare_#','Flare_Epoch','Flare_Epoch_BJD','Amplitude','FWHM','Chi_Sq.']], delimiter=",", fmt='%s')
                 np.savetxt(f, ZZ, delimiter=",", fmt='%s')
                 f.close()
     if Sim == False and injection == False:
-        ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, amplitude, time_scale, np.ones(len(amplitude))*T, np.ones(len(amplitude))*host_radius,chi_square_list))
+        ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, amplitude, time_scale,chi_square_list))
         return ZZ, flare_count
     if Sim == True:
-        ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, amplitude, time_scale, np.ones(len(amplitude))*T, np.ones(len(amplitude))*host_radius,chi_square_list))
+        ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, amplitude, time_scale,chi_square_list))
         return ZZ
     if injection == True and Sim == False:
         return event_list
                     
-def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, settings_template_dir, params_template_dir, host_name = 'My_Host', T = 4000, host_radius = 1, MCMC_CPUS = 1,
-          priors = None, baseline = 'hybrid_spline'):
+def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_dir, catalog_dir = os.getcwd(),
+          host_name = 'My_Host', NS_CPUS = 10, baseline = 'hybrid_spline'):
     '''
     Tier 3 of ardor. This function accepts the output directory of tier 2, and runs
     the MCMC fitting procedure on each flare found in tier 2, saving the results
@@ -754,11 +749,24 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, settings_tem
     None.
 
     '''
-    ##List out the flare .csv files
+    working_dirs = os.listdir(tier_3_working_dir)
+    tier_3_working_dirs = []
+    for dirs in working_dirs:
+        tier_3_working_dirs.append(os.path.join(tier_3_working_dir, dirs))
     flare_csvs = os.listdir(tier_2_output_dir)
     for flares in flare_csvs:
-        name = flares.replace('.csv','')
-        allesfitter_priors.construct_param_file(params_template_dir, priors, baseline = baseline, )
+        params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, baseline= baseline, NS_CPUS= NS_CPUS)
+        if params is not None:
+            allesfitter_priors.save_params_to_csv(host_name, int((flares.replace('Flare_', '')).replace('.csv', '')), params, dlogZ, catalog_dir)
+            allesfitter_priors.copy_output(tier_3_working_dirs[model], ['ns_corner', 'ns_fit', 'logfile'], tier_3_output_dir)
+            os.rename(os.path.join(tier_3_output_dir, 'ns_corner.pdf', ), os.path.join(tier_3_output_dir, f'Flare_{int((flares.replace("Flare_", "")).replace(".csv", ""))}_ns_corner.pdf'))
+        for dirs in tier_3_working_dirs:
+            allesfitter_priors.clear_workingdir(dirs)
+
+
+tier3('/ugrad/whitsett.n/ardor_test/AUMic', '/ugrad/whitsett.n/ardor_test/Working_Dirs/', '/ugrad/whitsett.n/ardor_test/Tier3/AUMic', '/ugrad/whitsett.n/ardor/templates', '/ugrad/whitsett.n/ardor_test/Tier3',
+      host_name = 'AUMic')
+
 
 ##EVE Related Functions (Solar)
 def EVE_detrend(data, time, return_trend = True):

@@ -4,7 +4,7 @@ Created on Thu Nov  2 11:48:26 2023
 
 @author: Nathan
 """
-#%%
+
 import pandas as pd
 from scipy.ndimage import gaussian_filter1d
 from scipy.integrate import simpson
@@ -49,7 +49,7 @@ def exp_decay(x, a, b, c):
     return a * np.exp(-b * x) + c
 
 def clear_workingdir(working_dir):
-
+    ## Clear the files in the working directory
     files = os.listdir(working_dir)
     for file_name in files:
         if os.path.isfile(os.path.join(working_dir, file_name)):
@@ -194,7 +194,8 @@ def return_flare_time_priors(peak_times, min_times):
     return priors
 
 def csv_cleaner(flare_csv_dir):
-    data = pd.read_csv(flare_csv_dir, header=None, index_col=False)
+    BJD = float((pd.read_csv(flare_csv_dir).columns[0].strip()).replace('#',''))
+    data = pd.read_csv(flare_csv_dir, header=None, index_col=False, skiprows=1)
     time = np.array(data[0])
     flux = np.array(data[1])
     error = np.array(data[2])
@@ -222,8 +223,10 @@ def csv_cleaner(flare_csv_dir):
         flux = flux[:gap_index]
         error = error[:gap_index]
     output = np.stack((time,flux,error)).T
-    np.savetxt(flare_csv_dir, output, delimiter=',')
-def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spline', N_models = 3, dlogZ_threshold = 2):
+    np.savetxt(flare_csv_dir, output, delimiter=',', fmt='%s', comments='')
+    return BJD
+
+def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spline', N_models = 3, dlogZ_threshold = 2, NS_CPUS = 10):
     """Uses Nested Sampling to compare different number of peaks in a flare model. Begins comparing no flare
     (only noise) to a single peaked flare, then adds additional peak(s) if the Bayesian evidence supports adding
     another peak.
@@ -241,11 +244,12 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
     Returns:
         float: Change in log Bayesian evidence of the best .
     """
-    if len(working_dirs) != N_models + 1:
+    if len(working_dirs) < N_models + 1:
         raise ValueError("Working dirs length does not match number of models.")
-    csv_cleaner(target_file)
+    BJD = csv_cleaner(target_file)
     file_num = os.path.basename(target_file).split('.csv')[0]
-    slice_time, slice_data = slice_flare(np.array(pd.read_csv(target_file, header=None)[0]), np.array(pd.read_csv(target_file, header=None)[1]))
+    time, data, error = np.array(pd.read_csv(target_file, header=None)[0]), np.array(pd.read_csv(target_file, header=None)[1]), np.array(pd.read_csv(target_file, header=None)[2])
+    slice_time, slice_data = slice_flare(time, data)
     peak_times, min_times = find_local_maxima(slice_time, slice_data)
     peak_time_best_guess = peak_times
     peak_time_priors = return_flare_time_priors(peak_times, min_times)
@@ -260,7 +264,7 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
         if idx == 0:
             construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
                                  peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors)
-            construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num)
+            construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num, ns_tol=0.1, cores=NS_CPUS)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             allesfitter.ns_fit(working_dir)
             allesfitter.ns_output(working_dir)
@@ -269,7 +273,7 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
         if idx == 1:
             construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
                                  peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors)
-            construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num)
+            construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num, ns_tol=0.1, cores=NS_CPUS)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             allesfitter.ns_fit(working_dir)
             allesfitter.ns_output(working_dir)
@@ -277,15 +281,22 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
             ## If change in Bayes Factor < 5, exit and return dlogZ
             dlogZ = log_Z1 - log_Z0
             if dlogZ < dlogZ_threshold:
-                return print("Data is best modeled by baseline/no flare model.")
+                print("Data is best modeled by baseline/no flare model.")
+                X = np.column_stack((time, data, error))
+                np.savetxt(target_file, X, delimiter=',', header=f'{BJD}')
+                return None, None, 0
             if dlogZ > dlogZ_threshold and N_models == 1:
                 print("Data is best modeled by 1 flare peak model.")
-                return log_Z1 - log_Z0
+                dictionary = allesfitter.allesclass(working_dirs[1])
+                params = param_unpacker(dictionary, time_const = BJD, N=1)
+                X = np.column_stack((time, data, error))
+                np.savetxt(target_file, X, delimiter=',', header=f'{BJD}')
+                return params, (log_Z1 - log_Z0), 1
         ## If change in Bayes Factor >= 5, continue to next model
         if idx == 2:
             construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
                                  peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors)
-            construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num)
+            construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num, ns_tol=0.1, cores=NS_CPUS)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             allesfitter.ns_fit(working_dir)
             allesfitter.ns_output(working_dir)
@@ -293,14 +304,22 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
             dlogZ = log_Z2 - log_Z1
             if dlogZ < dlogZ_threshold:
                 print("Data is best modeled by 1 flare peak model.")
-                return log_Z1 - log_Z0
+                dictionary = allesfitter.allesclass(working_dirs[1])
+                params = param_unpacker(dictionary,time_const = BJD, N=1)
+                X = np.column_stack((time, data, error))
+                np.savetxt(target_file, X, delimiter=',', header=f'{BJD}')
+                return params, (log_Z1 - log_Z0), 1
             if dlogZ >= dlogZ_threshold and N_models == 2:
                 print("Data is best modeled by 2 flare peak model.")
-                return log_Z2 - log_Z1
+                dictionary = allesfitter.allesclass(working_dirs[2])
+                params = param_unpacker(dictionary, time_const = BJD, N=2)
+                X = np.column_stack((time, data, error))
+                np.savetxt(target_file, X, delimiter=',', header=f'{BJD}')
+                return params, (log_Z2 - log_Z1), 2
         if idx == 3:
             construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
                                  peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors)
-            construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num)
+            construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num, ns_tol=0.1, cores=NS_CPUS)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             allesfitter.ns_fit(working_dir)
             allesfitter.ns_output(working_dir)
@@ -308,10 +327,18 @@ def multipeak_model_compare(target_file, working_dirs, template_dir, baseline='h
             dlogZ = log_Z3 - log_Z2
             if dlogZ < dlogZ_threshold:
                 print("Data is best modeled by 2 flare peak model.")
-                return log_Z2 - log_Z1
+                dictionary = allesfitter.allesclass(working_dirs[2])
+                params = param_unpacker(dictionary,time_const = BJD, N=2)
+                X = np.column_stack((time, data, error))
+                np.savetxt(target_file, X, delimiter=',', header=f'{BJD}')
+                return params, (log_Z2 - log_Z1), 2
             elif dlogZ >= dlogZ_threshold:
                 print("Data is best modeled by 3 flare peak model.")
-                return log_Z3 - log_Z2
+                dictionary = allesfitter.allesclass(working_dirs[3])
+                params = param_unpacker(dictionary, time_const = BJD, N=3)
+                X = np.column_stack((time, data, error))
+                np.savetxt(target_file, X, delimiter=',', header=f'{BJD}')
+                return params, (log_Z3 - log_Z2), 3
 
 ### Constructing parameter and settings files for allesfitter
 def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_priors = None, baseline = 'hybrid_spline', 
@@ -381,7 +408,7 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
 
 def construct_settings_file(settings_file_dir, working_dir, baseline = 'hybrid_spline', 
                          N=1, name = 'Flare', multi_process_bool = True
-                         , cores = 10, walkers = 15, steps = 5000, burn_in = 1000):
+                         , cores = 10, walkers = 15, steps = 5000, burn_in = 1000, ns_tol=0.1):
     """Constructs settings file for Tier 3 allesfitter MCMC run.
 
     Args:
@@ -403,7 +430,7 @@ def construct_settings_file(settings_file_dir, working_dir, baseline = 'hybrid_s
     for idx, values in enumerate(table['value']):
         if 'Flaronardo' in table['value'][idx]:
             table['value'][idx] = str(values).replace("Flaronardo", name)
-
+    table['value'][table['#name'] == 'companions_phot'] = name
     table['value'][table['#name'] == 'inst_phot'] = name
     table['value'][table['#name'] == 'multiprocess'] = multi_process_bool
     table['value'][table['#name'] == 'multiprocess_cores'] = cores
@@ -412,62 +439,44 @@ def construct_settings_file(settings_file_dir, working_dir, baseline = 'hybrid_s
     table['value'][table['#name'] == 'mcmc_burn_steps'] = burn_in
     table['value'][table['#name'] == f'baseline_flux_{name}'] = baseline
     table['value'][table['#name'] == 'N_flares'] = N
+    table['value'][table['#name'] == 'ns_tol'] = ns_tol
     ascii.write(table, os.path.join(working_dir, 'settings.csv'), overwrite=True, format='csv')
 
-def save_params_to_csv(params, Teff, Rst, dlogZ, output_csv):
+def save_params_to_csv(host_name, flare_number, params, dlogZ, output_dir):
     """_summary_
 
     Args:
-        params (_type_): _description_
-        Teff (_type_): _description_
-        Rst (_type_): _description_
-        dlogZ (_type_): _description_
-        output_csv (_type_): _description_
+        params (list of dicts): List of dictionaries containing flare parameters.
+        dlogZ (float): Logarithmic evidence difference.
+        output_csv (str): Directory to save the output CSV file.
     """
-    if len(params) == 1:
-        energy = flare_energy([ params[0]['epoch'][0], params[0]['fwhm'][0],  params[0]['amplitude'][0]], Teff[0], Rst[0],
-                                               [ params[0]['epoch'][1]],[ params[0]['fwhm'][1],  params[0]['amplitude'][1]],
-                                               [ params[0]['epoch'][2]],[ params[0]['fwhm'][2],  params[0]['amplitude'][2]], Teff[1], Teff[2],
-                                               Rst[1], Rst[2], N = len(flares), N_samp = 1000)
-    if len(params) == 2:
-        energy = flare_energy([params[0]['epoch'][0], params[0]['fwhm'][0],  params[0]['amplitude'][0], params[1]['epoch'][0], 
-                               params[1]['fwhm'][0],  params[1]['amplitude'][0]], Teff[0], Rst[0],
-                                        [params[0]['epoch'][1],params[0]['fwhm'][1],  params[0]['amplitude'][1], 
-                                        params[1]['epoch'][1],params[1]['fwhm'][1],  params[1]['amplitude'][1]],
-                                        [params[0]['epoch'][2], params[0]['fwhm'][2],  params[0]['amplitude'][2], 
-                                         params[1]['epoch'][2], params[1]['fwhm'][2],  params[1]['amplitude'][2]], 
-                                        Teff[1], Teff[2],Rst[1], Rst[2], N = len(flares), N_samp = 1000)
-    if len(params) == 3:
-        energy = flare_energy([params[0]['epoch'][0], params[0]['fwhm'][0],  params[0]['amplitude'][0], params[1]['epoch'][0], 
-                               params[1]['fwhm'][0],  params[1]['amplitude'][0], params[2]['epoch'][0], 
-                               params[2]['fwhm'][0],  params[2]['amplitude'][0]], Teff[0], Rst[0],
-                                        [params[0]['epoch'][1],params[0]['fwhm'][1],  params[0]['amplitude'][1], 
-                                        params[1]['epoch'][1],params[1]['fwhm'][1],  params[1]['amplitude'][1],
-                                        params[2]['epoch'][1],params[2]['fwhm'][1],  params[2]['amplitude'][1]],
-                                        [params[0]['epoch'][2], params[0]['fwhm'][2],  params[0]['amplitude'][2], 
-                                         params[1]['epoch'][2], params[1]['fwhm'][2],  params[1]['amplitude'][2],
-                                         params[2]['epoch'][2], params[2]['fwhm'][2],  params[2]['amplitude'][2]], 
-                                        Teff[1], Teff[2],Rst[1], Rst[2], N = len(flares), N_samp = 1000)
-    for flares in params:
-        if output_csv != None:
-            os.makedirs(output_csv, exist_ok=True)
-            data = pd.read_csv(os.path.join(output_csv, 'Tier_3_Flare_Params.csv'), header=None)
-            if data.empty:
-                with open(output_csv + '/Tier_3_Flare_Params.csv', "a") as f:
-                    f.write('Epoch_Best,Epoch,Epoch_Unc_L,Epoch_Unc_U,Amplitude_Best,Amplitude_Unc_L,Amplitude_Unc_U,FWHM_Best,FWHM_Unc_L,FWHM_Unc_U,Energy_Best,Energy_Unc_L,Energy_Unc_U,dlogZ\n')
-            ZZ = np.column_stack((flares['epoch'][0], flares['epoch'][0] + 2457000, flares['epoch'][1], flares['epoch'][2],
-                                  flares['amplitude'][0], flares['amplitude'][1], flares['amplitude'][2],
-                                  flares['fwhm']['0'], flares['fwhm'][1], flares['fwhm'][2], energy[0], energy[1], energy[2],
-                                  dlogZ))
-            with open(output_csv + '/Tier_3_Flare_Params.csv', "a") as f:
-                np.savetxt(f, ZZ, delimiter=",", fmt='%s')
-
-
-working_dirs = ["/ugrad/whitsett.n/ardor_test/Working_Dirs/Baseline", "/ugrad/whitsett.n/ardor_test/Working_Dirs/1Flare", "/ugrad/whitsett.n/ardor_test/Working_Dirs/2Flare",
-                  "/ugrad/whitsett.n/ardor_test/Working_Dirs/3Flare"]
-
-# multipeak_model_compare("/ugrad/whitsett.n/ardor_test/AUMic/Flare_56.csv", working_dirs, "/ugrad/whitsett.n/ardor/templates")
-# clear_workingdir("/ugrad/whitsett.n/ardor_test/Working_Dirs/2Flare")
-# clear_workingdir("/ugrad/whitsett.n/ardor_test/Working_Dirs/Baseline")
-# clear_workingdir("/ugrad/whitsett.n/ardor_test/Working_Dirs/1Flare")
-# %%
+    N_flares = len(params)
+    try:
+        data = pd.read_csv(os.path.join(output_dir, 'Tier_3_Flare_Params.csv'), header=None)
+    except FileNotFoundError:
+        file_name = output_dir + '/Tier_3_Flare_Params.csv'
+        with open(output_dir + '/Tier_3_Flare_Params.csv', "a") as f:
+            f.write('Host_ID,Flare_#,Epoch_BJD,Epoch_errl,Epoch_erru,Amplitude,Amplitude_errl,Amplitude_erru,FWHMt,FWHM_errl,FWHM_erru,Outburst,dlogZ\n')
+    for idx in range(N_flares):
+        ZZ = np.column_stack((host_name, flare_number,params[idx]['epoch'][0], params[idx]['epoch'][1], params[idx]['epoch'][2], 
+                              params[idx]['amplitude'][0], params[idx]['amplitude'][1], params[idx]['amplitude'][2], 
+                              params[idx]['fwhm'][0], params[idx]['fwhm'][1], params[idx]['fwhm'][2], idx, dlogZ))
+        with open(output_dir + '/Tier_3_Flare_Params.csv', "a") as f:
+            np.savetxt(f, ZZ, delimiter=",", fmt='%s')
+def param_unpacker(allesclass, time_const = 2457000, N = 1):
+    params = []
+    for flares in range(N):
+        t = allesclass.posterior_params_median[f'flare_tpeak_{flares+1}']
+        fwhm = allesclass.posterior_params_median[f'flare_fwhm_{flares+1}']
+        amp = allesclass.posterior_params_median[f'flare_ampl_{flares+1}']
+        t_l = allesclass.posterior_params_ll[f'flare_tpeak_{flares+1}']
+        fwhm_l = allesclass.posterior_params_ll[f'flare_fwhm_{flares+1}']
+        amp_l = allesclass.posterior_params_ll[f'flare_ampl_{flares+1}']
+        t_u = allesclass.posterior_params_ul[f'flare_tpeak_{flares+1}']
+        fwhm_u = allesclass.posterior_params_ul[f'flare_fwhm_{flares+1}']
+        amp_u = allesclass.posterior_params_ul[f'flare_ampl_{flares+1}']
+        param_dict = {f'epoch': [t+time_const, t_l, t_u],
+                      f'fwhm': [fwhm, fwhm_l, fwhm_u],
+                      f'amplitude': [amp, amp_l, amp_u]}
+        params.append(param_dict)
+    return params
