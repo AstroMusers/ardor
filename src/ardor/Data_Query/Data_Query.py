@@ -92,6 +92,7 @@ def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_l
                         print('Warning! Some files may have not downloaded. We skipped it for now, but check at the end for a list of potentially undownloaded files.')
                         undownloaded.append(data)
                         continue
+                    
             shutil.rmtree(os.path.join(download_dir, 'mastDownload'))
     for folders in os.listdir(download_dir):
         if len(os.listdir(os.path.join(download_dir, folders))) == 0:
