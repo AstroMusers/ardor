@@ -42,10 +42,10 @@ def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_l
         count = 0
         download_dir = download_dir 
         try:
-            os.mkdir(download_dir + '/' + str(host_name_list[index]))
+            os.mkdir(os.path.join(download_dir, str(host_name_list[index])))
         except FileExistsError:
             print('The directory already exists! Skipping the target. If you wish to rerun the data available for this target, delete or rename the current directory with its name. The run will continue.')
-            dirs.append(download_dir + '/' + str(host_name_list[index]))
+            dirs.append(os.path.join(download_dir, str(host_name_list[index])))
             continue
         try:
             obs_table = Observations.query_criteria(s_ra = [(float(RA_list[index]) - radius), (float(RA_list[index]) + radius)], 
@@ -72,7 +72,7 @@ def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_l
                         continue  
         if count > 0:
             try:
-                files = os.listdir(download_dir + '/mastDownload/TESS')
+                files = os.listdir(os.path.join(download_dir, 'mastDownload', 'TESS'))
             except:
                 print('There appears to be a directory error! This can happen if your computer does not update its directories fast enough for it to recognize where to put the new file. The potentially undownloaded file(s) will appear once the run is finished')
                 undownloaded.append(items)
@@ -80,23 +80,21 @@ def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_l
             for data in files:
                 if str(data).endswith('s') == True:
                     try:
-                        os.rename(download_dir + '/mastDownload/TESS/' + str(data) + '/' + str(data) + '_lc.fits', download_dir + '/' + str(host_name_list[index]) + '/' + str(data) + '_lc.fits')
+                        os.rename(os.path.join(download_dir, 'mastDownload', 'TESS', str(data), str(data) + '_lc.fits'), os.path.join(download_dir, str(host_name_list[index]), str(data) + '_lc.fits'))
                     except:
                         print('Warning! Some files may have not downloaded. We skipped it for now, but check at the end for a list of potentially undownloaded files.')
                         undownloaded.append(data)
                         continue
                 elif str(data).endswith('fast') == True:
                     try:
-                        os.rename(download_dir + '/mastDownload/TESS/' + str(data) + '/' + str(data) + '-lc.fits', download_dir + '/' + str(host_name_list[index]) + '/' + str(data) + '-lc.fits')
+                        os.rename(os.path.join(download_dir, 'mastDownload', 'TESS', str(data), str(data) + '-lc.fits'), os.path.join(download_dir, str(host_name_list[index]), str(data) + '-lc.fits'))
                     except:
                         print('Warning! Some files may have not downloaded. We skipped it for now, but check at the end for a list of potentially undownloaded files.')
                         undownloaded.append(data)
                         continue
-            shutil.rmtree(download_dir + '/mastDownload')
+            shutil.rmtree(os.path.join(download_dir, 'mastDownload'))
     for folders in os.listdir(download_dir):
-        if len(os.listdir(download_dir + '/' + folders)) == 0:
-            shutil.rmtree(download_dir + '/' + folders)
+        if len(os.listdir(os.path.join(download_dir, folders))) == 0:
+            shutil.rmtree(os.path.join(download_dir, folders))
     print('The already existing directories are:', dirs)
     print('The potential undownloaded files are:', undownloaded)
-
-Bulk_TESS_lc_Query([117.3009140], [-76.7026960], [272232401], 'C:/Users/whitsett.n/Desktop/', ['COCONUTS-2b'])
