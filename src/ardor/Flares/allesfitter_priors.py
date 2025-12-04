@@ -181,7 +181,7 @@ def return_flare_time_priors(peak_times, min_times):
     priors = []
     for idx, t in enumerate(peak_times):
         if idx == 0:
-            prior_lower = -0.02
+            prior_lower = -0.1
             prior_upper = 0 + min_times[0]
         elif idx != 0:
             try:
@@ -364,12 +364,20 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
             elif N == 2:
                 param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1',
                             'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2']
-                best_guess = [peak_time_best_guess[0], 0.01, 0.1, peak_time_best_guess[1], 0.01, 0.1]
-                priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.1', 'uniform 0 3', 
-                            f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.1', 'uniform 0 3']
-                labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
-                            'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
-                units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
+                try:
+                    best_guess = [peak_time_best_guess[0], 0.01, 0.1, peak_time_best_guess[1], 0.01, 0.1]
+                    priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.1', 'uniform 0 3', 
+                                f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.1', 'uniform 0 3']
+                    labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
+                                'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
+                    units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
+                except IndexError:
+                    best_guess = [0, 0.01, 0.1, 0.03, 0.01, 0.1]
+                    priors = [f'uniform {-0.02} {0.02}', 'uniform 0 0.1', 'uniform 0 3', 
+                                f'uniform {0.02} {0.04}', 'uniform 0 0.1', 'uniform 0 3']
+                    labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
+                                'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
+                    units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
             elif N == 3:
                 param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1',
                             'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2',

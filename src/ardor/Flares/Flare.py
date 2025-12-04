@@ -4,6 +4,7 @@ Created on Wed May 31 12:20:10 2023
 
 @author: Nate Whitsett
 """
+#%%
 from astropy.io import fits
 from astropy.timeseries import LombScargle as LS
 from scipy.optimize import curve_fit
@@ -341,7 +342,58 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
                 continue
     
     return flare_indices, flare_length_list
+def split_by_time_gaps(time, flux, gap_threshold=None, multiplier=5):
+    """
+    Split a time series into contiguous chunks based on time gaps.
+    
+    Parameters
+    ----------
+    time : array-like
+        Time values (1D).
+    flux : array-like
+        Flux values corresponding to `time`.
+    gap_threshold : float, optional
+        Time gap size above which a new chunk is created.
+        If None, it is automatically determined from the data using:
+            gap_threshold = multiplier * median(dt)
+    multiplier : float
+        Only used if gap_threshold is None. Controls automatic threshold.
+    
+    Returns
+    -------
+    chunks : list of (time_chunk, flux_chunk)
+        A list where each element is a tuple containing the time and flux
+        arrays for one contiguous segment.
+    """
 
+    time = np.asarray(time)
+    flux = np.asarray(flux)
+
+    # Compute time differences
+    dt = np.diff(time)
+
+    # Infer threshold if not provided
+    if gap_threshold is None:
+        # Use a robust gap criterion
+        median_dt = np.median(dt)
+        gap_threshold = multiplier * median_dt
+
+    # Identify where gaps exceed threshold
+    gap_indices = np.where(dt > gap_threshold)[0]
+
+    chunks = []
+    start = 0
+
+    # Split at each gap
+    for idx in gap_indices:
+        end = idx + 1
+        chunks.append((time[start:end], flux[start:end]))
+        start = end
+
+    # Add the last chunk
+    chunks.append((time[start:], flux[start:]))
+
+    return chunks
 def delete_nans(time, data, error):
     '''
     Deletes NAN values from both the time and data arrays, ensuring both arrays
@@ -524,10 +576,18 @@ def tier0(TESS_fits_file, scale = 401, injection = False):
     if injection == False:
         b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
         time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
-        detrend_flux, trend = lk_detrend(flux, time, scale=scale, return_trend= True)
+        chunks = split_by_time_gaps(time, flux, gap_threshold=1)
+        time = []
+        detrend_flux = []
+        chunk_trends = []
+        for chunk in chunks:
+            chunk_detrend_flux, chunk_trend = lk_detrend(chunk[0], chunk[1], scale=scale, return_trend= True)
+            time.extend(chunk[0])
+            detrend_flux.extend(chunk_detrend_flux)
+            chunk_trends.extend(chunk_trend)
         observation_time = cadence*len(time)
         LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
-        lc = LightCurve(time, flux, detrend_flux, pdcsap_error, fast, observation_time, trend.flux)
+        lc = LightCurve(time, flux, detrend_flux, pdcsap_error, fast, observation_time, chunk_trends)
     elif injection == True:
         lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
         detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
@@ -764,10 +824,6 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_di
             allesfitter_priors.clear_workingdir(dirs)
 
 
-tier3('/ugrad/whitsett.n/ardor_test/AUMic', '/ugrad/whitsett.n/ardor_test/Working_Dirs/', '/ugrad/whitsett.n/ardor_test/Tier3/AUMic', '/ugrad/whitsett.n/ardor/templates', '/ugrad/whitsett.n/ardor_test/Tier3',
-      host_name = 'AUMic')
-
-
 ##EVE Related Functions (Solar)
 def EVE_detrend(data, time, return_trend = True):
     p = np.polyfit(time, data, 2)
@@ -903,3 +959,10 @@ def EVE_tier0(EVE_fits_file, diode_bool = False, line_bool = True, cadence=1, ba
     lc = LightCurve(lc.time, lc.flux, detrend_flux, lc.error, observation_time, trend)
 
     return lc,meta
+
+data_dir = '/data2/whitsett.n/TESS/Hosts/CoRoT-4/tess2018349182500-s0006-0000000036440357-0126-s_lc.fits'
+lc = TESS_data_extract(data_dir)
+
+
+plt.plot(chunks[1][0], chunks[1][1])
+plt.show()
