@@ -755,12 +755,14 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_di
     for dirs in working_dirs:
         tier_3_working_dirs.append(os.path.join(tier_3_working_dir, dirs))
     flare_csvs = os.listdir(tier_2_output_dir)
+    os.makedirs(os.path.join(tier_3_output_dir, host_name), exist_ok=True)
+    output = os.path.join(tier_3_output_dir, host_name)
     for flares in flare_csvs:
-        params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, baseline= baseline, NS_CPUS= NS_CPUS)
+        params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, baseline= baseline, NS_CPUS= NS_CPUS, N_models=1)
         if params is not None:
             allesfitter_priors.save_params_to_csv(host_name, int((flares.replace('Flare_', '')).replace('.csv', '')), params, dlogZ, catalog_dir)
-            allesfitter_priors.copy_output(tier_3_working_dirs[model], ['ns_corner', 'ns_fit', 'logfile'], tier_3_output_dir)
-            os.rename(os.path.join(tier_3_output_dir, 'ns_corner.pdf', ), os.path.join(tier_3_output_dir, f'Flare_{int((flares.replace("Flare_", "")).replace(".csv", ""))}_ns_corner.pdf'))
+            allesfitter_priors.copy_output(tier_3_working_dirs[model], ['ns_corner', 'ns_fit', 'logfile'], output)
+            os.rename(os.path.join(output, 'ns_corner.pdf', ), os.path.join(output, f'Flare_{int((flares.replace("Flare_", "")).replace(".csv", ""))}_ns_corner.pdf'))
         for dirs in tier_3_working_dirs:
             allesfitter_priors.clear_workingdir(dirs)
 
@@ -900,4 +902,3 @@ def EVE_tier0(EVE_fits_file, diode_bool = False, line_bool = True, cadence=1, ba
     lc = LightCurve(lc.time, lc.flux, detrend_flux, lc.error, observation_time, trend)
 
     return lc,meta
-

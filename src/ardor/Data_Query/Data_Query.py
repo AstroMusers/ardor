@@ -6,6 +6,7 @@ Created on Mon Sep 18 11:06:28 2023
 """
 
 from astroquery.mast import Observations
+from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive as nea
 import os
 import shutil
 import pandas as pd
@@ -99,3 +100,25 @@ def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_l
             shutil.rmtree(os.path.join(download_dir, folders))
     print('The already existing directories are:', dirs)
     print('The potential undownloaded files are:', undownloaded)
+
+def Query_Transit_Solution(identifier, TIC = False,table = "pscomppars"):
+    """_summary_
+
+    Args:
+        identifier (float or string): If TIC is False, this is the planet name as a string. 
+        If TIC is True, this is the TIC ID as a float.
+        TIC (bool, optional): If True, query by TESS Input Catalog ID (TIC ID). Else,
+         query by planet name. Defaults to False.
+        table (str, optional): Which table to query. Defaults to "pscomppars", NEA's composite data table.
+        select (str, optional): Which columns to select. Defaults to "pl_orbper,pl_tranmid".
+    
+    Returns:
+        float: The orbital period, transit mid-point, and transit mid-point - 2457000 (for TESS JD conversion).
+    """
+    if TIC == True:
+        query = nea.query_criteria(table=table, select="pl_orbper,pl_tranmid",
+                                    where=f"tic_id='TIC {str(identifier)}'")
+    elif TIC == False:
+        query = nea.query_criteria(table=table, select="pl_orbper,pl_tranmid",
+                                    where=f"pl_name like '{str(identifier)}'")
+    return float(query['pl_orbper'][0].value), float(query['pl_tranmid'][0].value), float(query['pl_tranmid'][0].value) - 2457000
