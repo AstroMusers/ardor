@@ -11,7 +11,6 @@ from scipy.integrate import simpson
 import numpy as np
 import os
 from ardor.Flares import aflare
-import math
 from ardor.Utils.planck_law import planck_law, planck_integrator
 from ardor.Utils.Utils import asymmetric_sample, find_nearest, copy_output
 import allesfitter
@@ -19,7 +18,6 @@ import astropy.io.ascii as ascii
 from astropy.table import Table
 import shutil
 import pandas as pd
-from matplotlib import pyplot as plt
 def find_nearest(array, value):
     array = np.asarray(array)
     idx = (np.abs(array - value)).argmin()
