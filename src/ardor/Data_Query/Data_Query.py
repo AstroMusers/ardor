@@ -9,6 +9,7 @@ from astroquery.mast import Observations
 from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive as nea
 import os
 import shutil
+import numpy as np
 import pandas as pd
 def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_list, radius = 0.01):
     '''
@@ -116,9 +117,27 @@ def Query_Transit_Solution(identifier, TIC = False,table = "pscomppars"):
         float: The orbital period, transit mid-point, and transit mid-point - 2457000 (for TESS JD conversion).
     """
     if TIC == True:
-        query = nea.query_criteria(table=table, select="pl_orbper,pl_tranmid",
+        query = nea.query_criteria(table=table, select="pl_letter,tran_flag,pl_orbper,pl_tranmid,pl_trandur",
                                     where=f"tic_id='TIC {str(identifier)}'")
     elif TIC == False:
-        query = nea.query_criteria(table=table, select="pl_orbper,pl_tranmid",
-                                    where=f"pl_name like '{str(identifier)}'")
-    return float(query['pl_orbper'][0].value), float(query['pl_tranmid'][0].value), float(query['pl_tranmid'][0].value) - 2457000
+        query = nea.query_criteria(table=table, select="pl_letter,tran_flag,pl_orbper,pl_tranmid,pl_trandur",
+                                    where=f"hostname like '{str(identifier)}'")
+    planets = set(query['pl_letter'])
+    periods = []
+    transit_mids = []
+    durations = []
+    for planet in planets:
+        tran_check = (query['tran_flag'] == 1) & (query['pl_letter'] == planet)
+        if np.sum(tran_check) == 0:
+            continue
+        mask = (query['pl_letter'] == planet)
+        query_planet = query[mask]
+        if table == 'pscomppars':
+            periods.append(float(query_planet['pl_orbper'].value)) 
+            transit_mids.append(float(query_planet['pl_tranmid'].value))
+            durations.append(float(query_planet['pl_trandur'].value))
+        elif table == 'ps':
+            periods.append(float(np.nanmedian(query_planet['pl_orbper'].value)))
+            transit_mids.append(float(np.nanmax(query_planet['pl_tranmid'].value))) 
+            durations.append(float(np.nanmedian(query_planet['pl_trandur'].value)))
+    return np.array(periods), np.array(transit_mids), np.array(durations)
