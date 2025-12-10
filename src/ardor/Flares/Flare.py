@@ -17,7 +17,7 @@ from ardor.Flares import aflare
 import ardor.SPI_Forward_Models.SPI_Simulation as SPI
 import copy
 from ardor.Flares import allesfitter_priors
-import shutil
+from ardor.Data_Query.Data_Query import Query_Transit_Solution
 import lightkurve as lk
 import collections as c
 from matplotlib import pyplot as plt
@@ -66,6 +66,278 @@ def exp_decay(x, a, b, c):
 
     '''
     return a * np.exp(-b * x) + c
+def detrend_segment(time, flux, error=None, poly_order=2, sigma_clip=3, max_iter=5):
+    """
+    Detrend a single segment using iterative sigma-clipping to preserve outliers.
+    
+    This function fits a polynomial trend to the data while iteratively removing
+    outliers from the fit (but keeping them in the output). This ensures that
+    positive outliers (like flares) don't bias the trend fit.
+    
+    Parameters
+    ----------
+    time : array-like
+        Time values for the segment
+    flux : array-like
+        Flux values for the segment
+    error : array-like, optional
+        Flux uncertainties (not currently used but kept for future enhancements)
+    poly_order : int, optional
+        Polynomial order for the trend fit (default: 2 for quadratic)
+    sigma_clip : float, optional
+        Sigma threshold for clipping outliers during fitting (default: 3)
+    max_iter : int, optional
+        Maximum number of sigma-clipping iterations (default: 5)
+    
+    Returns
+    -------
+    dict
+        Dictionary containing:
+        - 'time': original time array
+        - 'flux': original flux array
+        - 'detrended_flux': flux with trend removed
+        - 'trend': the fitted trend
+        - 'error': original error array (if provided)
+    """
+    time = np.array(time)
+    flux = np.array(flux)
+    
+    # Normalize time to avoid numerical issues in polynomial fitting
+    time_norm = (time - np.mean(time)) / np.std(time)
+    
+    # Iterative sigma clipping to find the trend without being affected by outliers
+    mask = np.ones(len(flux), dtype=bool)
+    
+    for iteration in range(max_iter):
+        # Fit polynomial to non-clipped points
+        coeffs = np.polyfit(time_norm[mask], flux[mask], poly_order)
+        trend_fit = np.polyval(coeffs, time_norm)
+        
+        # Calculate residuals
+        residuals = flux - trend_fit
+        
+        # Sigma clip: remove points that are too far from the trend
+        # Only clip negative outliers OR points far in both directions
+        # This preserves positive outliers (flares) better
+        std_residuals = np.std(residuals[mask])
+        new_mask = np.abs(residuals) < sigma_clip * std_residuals
+        
+        # Check for convergence
+        if np.array_equal(mask, new_mask):
+            break
+        
+        mask = new_mask
+    
+    # Final fit with the clipped data
+    coeffs = np.polyfit(time_norm[mask], flux[mask], poly_order)
+    trend = np.polyval(coeffs, time_norm)
+    
+    # Detrend by subtracting the trend and adding back the median
+    detrended_flux = flux - trend + np.median(flux)
+    
+    result = {
+        'time': time,
+        'flux': flux,
+        'detrended_flux': detrended_flux,
+        'trend': trend,
+    }
+    
+    if error is not None:
+        result['error'] = np.array(error)
+    
+    return result
+
+
+def detrend_segments(segments, poly_order=2, sigma_clip=3, max_iter=5):
+    """
+    Detrend multiple segments, preserving outliers in each.
+    
+    Parameters
+    ----------
+    segments : list
+        List of segment dictionaries from extract_segments()
+    poly_order : int, optional
+        Polynomial order for the trend fit (default: 2)
+    sigma_clip : float, optional
+        Sigma threshold for clipping outliers during fitting (default: 3)
+    max_iter : int, optional
+        Maximum number of sigma-clipping iterations (default: 5)
+    
+    Returns
+    -------
+    list
+        List of detrended segment dictionaries
+    """
+    detrended_segments = []
+    
+    for segment in segments:
+        if 'time' in segment and 'flux' in segment:
+            detrended = detrend_segment(
+                segment['time'], 
+                segment['flux'], 
+                segment.get('error', None),
+                poly_order=poly_order,
+                sigma_clip=sigma_clip,
+                max_iter=max_iter
+            )
+            detrended_segments.append(detrended)
+        else:
+            # If it's not a flux segment, just pass it through
+            detrended_segments.append(segment)
+    
+    return detrended_segments
+
+
+def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatten_non_transits=True, window_length=201):
+    """
+    Reconstruct a full light curve by combining detrended non-transit data with detrended transit segments.
+    
+    Parameters
+    ----------
+    original_lc : lightkurve.LightCurve
+        The original, full light curve
+    mask : array-like (boolean)
+        Boolean mask where True indicates transit points (same as used in lc.create_transit_mask)
+    detrended_transit_segments : list
+        List of detrended transit segment dictionaries from detrend_segments()
+    flatten_non_transits : bool, optional
+        Whether to flatten/detrend the non-transit portions (default: True)
+    window_length : int, optional
+        Window length for flattening non-transit data (default: 201)
+    
+    Returns
+    -------
+    lightkurve.LightCurve
+        Reconstructed light curve with detrended transits and non-transits
+    """
+    # Start with the original light curve arrays
+    reconstructed_flux = np.array(original_lc.flux)
+    reconstructed_time = np.array(original_lc.time.value)
+    reconstructed_error = np.array(original_lc.flux_err) if hasattr(original_lc, 'flux_err') else None
+    
+    # Get the non-transit light curve and optionally flatten it
+    lc_no_transits = original_lc[~mask]
+    if flatten_non_transits:
+        lc_no_transits, trend = lc_no_transits.flatten(window_length=window_length, return_trend=True)
+    
+    # Calculate the median of the non-transit flux (this is our reference level)
+    non_transit_median = np.median(lc_no_transits.flux)
+    
+    # Replace non-transit points with the flattened version
+    reconstructed_flux[~mask] = lc_no_transits.flux
+    
+    # Now insert the detrended transit segments
+    # We need to match each segment back to its position in the original light curve
+    transit_lc = original_lc[mask]
+    transit_times = transit_lc.time.value
+    
+    # For each detrended segment, find where it belongs in the original light curve
+    for segment in detrended_transit_segments:
+        seg_times = segment['time']
+        seg_detrended_flux = segment['detrended_flux']
+        
+        # Find indices in the original light curve that match these times
+        for i, t in enumerate(seg_times):
+            # Find the index in the original light curve
+            idx = np.argmin(np.abs(reconstructed_time - t))
+            
+            # Adjust the detrended flux to be centered around the non-transit median
+            # The detrended segment is already centered around its own median
+            # We want to shift it to match the non-transit median
+            segment_median = np.median(segment['flux'])
+            adjusted_flux = seg_detrended_flux[i] - np.median(seg_detrended_flux) + non_transit_median
+            
+            reconstructed_flux[idx] = adjusted_flux
+    
+    # Create the reconstructed light curve
+    reconstructed_lc = lk.LightCurve(
+        time=reconstructed_time,
+        flux=reconstructed_flux,
+        flux_err=reconstructed_error
+    )
+    
+    return reconstructed_lc, trend
+
+
+def extract_segments(masked_data, gap_threshold=20):
+    """
+    Extract contiguous segments from a masked array or masked LightCurve based on time gaps.
+    
+    Parameters
+    ----------
+    masked_data : numpy.ma.MaskedArray or lightkurve.LightCurve
+        The masked data containing segments to extract.
+    gap_threshold : int, optional
+        Minimum number of data points gap to define separate segments (default: 20)
+    
+    Returns
+    -------
+    list
+        A list where each element is a dictionary containing the segment data.
+        For LightCurve objects: {'time': array, 'flux': array, 'error': array}
+        For masked arrays: {'data': array}
+    """
+    # Check if it's a LightCurve object
+    is_lightcurve = hasattr(masked_data, 'time') and hasattr(masked_data, 'flux')
+    
+    if is_lightcurve:
+        # Get the time array
+        times = masked_data.time.value
+        
+        # Find breaks where consecutive time points have large gaps
+        # Calculate the median time difference to determine what's "normal"
+        time_diffs = np.diff(times)
+        median_diff = np.median(time_diffs)
+        
+        # Find where gaps are much larger than typical (gap_threshold times the median)
+        segment_breaks = np.where(time_diffs > gap_threshold * median_diff)[0] + 1
+        
+        # Split into segments
+        if len(segment_breaks) > 0:
+            segment_indices = np.split(np.arange(len(times)), segment_breaks)
+        else:
+            segment_indices = [np.arange(len(times))]
+        
+        segments = []
+        for seg_idx in segment_indices:
+            if len(seg_idx) > 0:
+                segment = {
+                    'time': np.array(times[seg_idx]),
+                    'flux': np.array(masked_data.flux[seg_idx]),
+                    'error': np.array(masked_data.flux_err[seg_idx]) if hasattr(masked_data, 'flux_err') else None
+                }
+                segments.append(segment)
+    else:
+        # Handle numpy masked array
+        if hasattr(masked_data, 'mask'):
+            indices = np.where(~masked_data.mask)[0]
+        else:
+            # If not masked, treat entire array as one segment
+            return [{'data': np.array(masked_data)}]
+        
+        # Find contiguous segments based on index gaps
+        if len(indices) == 0:
+            return []
+        
+        segment_breaks = np.where(np.diff(indices) >= gap_threshold)[0] + 1
+        segment_indices = np.split(indices, segment_breaks)
+        
+        segments = []
+        for seg_idx in segment_indices:
+            if len(seg_idx) > 0:
+                segment = {'data': np.array(masked_data[seg_idx])}
+                segments.append(segment)
+    
+    return segments
+
+
+def split_lc(target_name, light_curve):
+    period, epoch, duration = Query_Transit_Solution(target_name, table='ps')
+    mask = light_curve.create_transit_mask(period, epoch, duration/24)
+    lc_no_transits = light_curve[~mask]
+    transits = light_curve[mask]
+    return lc_no_transits, transits
+
 
 def bolo_flare_energy(parameters, R_stellar, planck_ratio, t_unit='days', function=exp_decay):
     """Computes the bolometric energy of a flare given flare parameters.
@@ -150,20 +422,17 @@ def TESS_data_extract(fits_lc_file, PDCSAP_ERR=True):
         Returns named tuple that has attributes flux, time, and error.
 
     '''
-    hdul = fits.open(fits_lc_file)
-    time = hdul[1].data['TIME']
-    pdcsap_flux = hdul[1].data['PDCSAP_FLUX']
-    pdcsap_flux_error = hdul[1].data['PDCSAP_FLUX_ERR']
-    time, pdcsap_flux, pdcsap_flux_error = delete_nans(time, pdcsap_flux, pdcsap_flux_error)
-    flux = pdcsap_flux/np.median(pdcsap_flux)
-    error = pdcsap_flux_error/np.median(pdcsap_flux)
+    lc = lk.read(fits_lc_file, flux_column='pdcsap_flux').remove_nans()
+    lc = lc[lc.quality == 0]
+    flux = lc.flux/np.median(lc.flux)
+    error = lc.flux_err/np.median(lc.flux)
     if PDCSAP_ERR == False:
         LightCurve = c.namedtuple('LightCurve', ['time', 'flux'])
-        lc = LightCurve(time, flux)
+        lc = LightCurve(lc.time + 2457000, flux)
         return lc
     if  PDCSAP_ERR == True:
         LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'error'])
-        lc = LightCurve(time, flux, error)
+        lc = LightCurve(lc.time + 2457000, flux, error)
         return lc
     
 ##Light Curve helper functions
@@ -489,7 +758,7 @@ def lk_detrend(data, time, scale=401, return_trend = False):
 
 
 ## Ardor Tiers
-def tier0(TESS_fits_file, scale = 401, injection = False):
+def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, host_name=None):
     '''
     Tier 0 of ardor. This function accepts a TESS '...lc.fits' file, and returns
     a named tuple which contains a NAN free, detrended and normalized 
@@ -516,28 +785,67 @@ def tier0(TESS_fits_file, scale = 401, injection = False):
             or NAN values. (float)
             - trend: The trend removed in the detrending step. (array)
     '''
-    if TESS_fits_file.endswith('a_fast-lc.fits') == True:
-        fast = True
-        cadence = (1/3)
-    elif TESS_fits_file.endswith('a_fast-lc.fits') == False:  
-        fast = False
-        cadence = 2
-    if injection == False:
-        b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
-        time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
-        detrend_flux, trend = lk_detrend(flux, time, scale=scale, return_trend= True)
-        observation_time = cadence*len(time)
-        LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
-        lc = LightCurve(time, flux, detrend_flux, pdcsap_error, fast, observation_time, trend.flux)
-    elif injection == True:
-        lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
-        detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
-        observation_time = cadence*len(lc.time)
-        LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
-        lc = LightCurve(lc.time, lc.flux, detrend_flux, lc.error, fast, observation_time, trend.flux)
+    if deep_transit == False:
+        if TESS_fits_file.endswith('a_fast-lc.fits') == True:
+            fast = True
+            cadence = (1/3)
+        elif TESS_fits_file.endswith('a_fast-lc.fits') == False:  
+            fast = False
+            cadence = 2
+        if injection == False:
+            b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
+            time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
+            detrend_flux, trend = lk_detrend(flux, time, scale=scale, return_trend= True)
+            observation_time = cadence*len(time)
+            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
+            lc = LightCurve(time, flux, detrend_flux, pdcsap_error, fast, observation_time, trend.flux)
+        elif injection == True:
+            lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
+            detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
+            observation_time = cadence*len(lc.time)
+            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
+            lc = LightCurve(lc.time, lc.flux, detrend_flux, lc.error, fast, observation_time, trend.flux)
+    elif deep_transit == True:
+            if TESS_fits_file.endswith('a_fast-lc.fits') == True:
+                    fast = True
+                    cadence = (1/3)
+            elif TESS_fits_file.endswith('a_fast-lc.fits') == False:  
+                fast = False
+                cadence = 2
+            if injection == False:
+                b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
+                time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
+                lc = lk.LightCurve(time=time, flux=flux, flux_err=pdcsap_error)
+                observation_time = cadence*len(time)
+                period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
+                mask = lc.create_transit_mask(period, epoch, duration/24)
+                transits = lc[mask]
+                transit_segments = extract_segments(transits)
+                detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
+                # Reconstruct the full light curve with detrended transits
+                reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
+                LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
+                lc = LightCurve(reconstructed_lc.time, reconstructed_lc.flux, reconstructed_lc.detrended_flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux)
+            elif injection == True:
+                lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
+                detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
+                observation_time = cadence*len(lc.time)
+                b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
+                time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
+                lc = lk.LightCurve(time=time, flux=flux, flux_err=pdcsap_error)
+                observation_time = cadence*len(time)
+                period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
+                mask = lc.create_transit_mask(period, epoch, duration/24)
+                transits = lc[mask]
+                transit_segments = extract_segments(transits)
+                detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
+                # Reconstruct the full light curve with detrended transits
+                reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
+                LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
+                lc = LightCurve(reconstructed_lc.time, reconstructed_lc.flux, reconstructed_lc.detrended_flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux)
     return lc
 
-def tier1(detrend_flux, sigma, fast=False, injection = False):
+def tier1(detrend_flux, sigma, fast=False, injection = False, in_transit = False):
     '''
     Tier 1 of ardor. This function accepts a detrended light curve flux array,
     and a sigma value for flare detection, and returns a named tuple containing
