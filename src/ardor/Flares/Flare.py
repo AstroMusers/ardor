@@ -793,18 +793,18 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
             fast = False
             cadence = 2
         if injection == False:
-            b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
-            time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
-            detrend_flux, trend = lk_detrend(flux, time, scale=scale, return_trend= True)
-            observation_time = cadence*len(time)
+            time, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
+            lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
+            detrend_flux, trend = lk_detrend(lc.flux, lc.time.value, scale=scale, return_trend= True)
+            observation_time = cadence*len(lc.time.value)
             LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
-            lc = LightCurve(time, flux, detrend_flux, pdcsap_error, fast, observation_time, trend.flux)
+            lc = LightCurve(lc.time.value, lc.flux, detrend_flux, lc.flux_err, fast, observation_time, trend.flux)
         elif injection == True:
             lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
             detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
             observation_time = cadence*len(lc.time)
             LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
-            lc = LightCurve(lc.time, lc.flux, detrend_flux, lc.error, fast, observation_time, trend.flux)
+            lc = LightCurve(lc.time.value, lc.flux, detrend_flux, lc.error, fast, observation_time, trend.flux)
     elif deep_transit == True:
             if TESS_fits_file.endswith('a_fast-lc.fits') == True:
                     fast = True
@@ -813,9 +813,8 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
                 fast = False
                 cadence = 2
             if injection == False:
-                b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
-                time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
-                lc = lk.LightCurve(time=time, flux=flux, flux_err=pdcsap_error)
+                time, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
+                lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
                 observation_time = cadence*len(time)
                 period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
                 mask = lc.create_transit_mask(period, epoch, duration/24)
@@ -825,7 +824,7 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
                 # Reconstruct the full light curve with detrended transits
                 reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
                 LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
-                lc = LightCurve(reconstructed_lc.time, reconstructed_lc.flux, reconstructed_lc.detrended_flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux)
+                lc = LightCurve(reconstructed_lc.time.value, lc.flux, reconstructed_lc.flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux)
             elif injection == True:
                 lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
                 detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
