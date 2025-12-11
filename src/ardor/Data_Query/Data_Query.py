@@ -102,26 +102,51 @@ def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_l
     print('The already existing directories are:', dirs)
     print('The potential undownloaded files are:', undownloaded)
 
-def Query_Transit_Solution(identifier, TIC = False,table = "pscomppars"):
-    """_summary_
-
-    Args:
-        identifier (float or string): If TIC is False, this is the planet name as a string. 
-        If TIC is True, this is the TIC ID as a float.
-        TIC (bool, optional): If True, query by TESS Input Catalog ID (TIC ID). Else,
-         query by planet name. Defaults to False.
-        table (str, optional): Which table to query. Defaults to "pscomppars", NEA's composite data table.
-        select (str, optional): Which columns to select. Defaults to "pl_orbper,pl_tranmid".
-    
-    Returns:
-        float: The orbital period, transit mid-point, and transit mid-point - 2457000 (for TESS JD conversion).
+def Query_Transit_Solution(identifier, table = "ps"):
     """
-    if TIC == True:
+    Query the NASA Exoplanet Archive for transit solution parameters of planets.
+    This function retrieves transit parameters (orbital period, transit mid-time, and transit duration)
+    for planets associated with a given stellar identifier from the NASA Exoplanet Archive.
+    Parameters
+    ----------
+    identifier : str, int, or float
+        The stellar identifier. If numeric (int or float), it is treated as a TIC ID.
+        If string, it is treated as a hostname and searched using a LIKE query.
+    table : str, optional
+        The NASA Exoplanet Archive table to query. Default is "ps".
+        Supported values include "pscomppars" (Planetary Systems Composite Parameters)
+        and "ps" (Planetary Systems). The aggregation method differs by table.
+    Returns
+    -------
+    periods : numpy.ndarray
+        Array of orbital periods in days for each planet with transit data.
+    transit_mids : numpy.ndarray
+        Array of transit mid-times (BJD) for each planet with transit data.
+    durations : numpy.ndarray
+        Array of transit durations in hours for each planet with transit data.
+    Raises
+    ------
+    ValueError
+        If identifier is neither a string nor numeric type.
+    Notes
+    -----
+    - Only planets with tran_flag == 1 are included in the results.
+    - For table='pscomppars', the function returns single values directly from the query.
+    - For table='ps', the function returns the median period and duration, and the maximum
+      transit mid-time from potentially multiple entries per planet.
+    - All returned arrays have the same length, corresponding to the number of transiting
+      planets found.
+    """
+
+
+    if type(identifier) == float or type(identifier) == int:
         query = nea.query_criteria(table=table, select="pl_letter,tran_flag,pl_orbper,pl_tranmid,pl_trandur",
-                                    where=f"tic_id='TIC {str(identifier)}'")
-    elif TIC == False:
+                                    where=f"tic_id='TIC {str(int(identifier))}'")
+    elif type(identifier) == str:
         query = nea.query_criteria(table=table, select="pl_letter,tran_flag,pl_orbper,pl_tranmid,pl_trandur",
                                     where=f"hostname like '{str(identifier)}'")
+    else:
+        raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
     planets = set(query['pl_letter'])
     periods = []
     transit_mids = []

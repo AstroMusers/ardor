@@ -21,6 +21,7 @@ from ardor.Data_Query.Data_Query import Query_Transit_Solution
 import lightkurve as lk
 import collections as c
 from matplotlib import pyplot as plt
+import re
 
 ## Mathematical Functions and Computation
 def linear(x, a, b):
@@ -66,6 +67,28 @@ def exp_decay(x, a, b, c):
 
     '''
     return a * np.exp(-b * x) + c
+
+def split_by_gap(time, flux, gap_threshold=1.0):
+    """Split time and flux arrays at gaps larger than gap_threshold days."""
+    time_diffs = np.diff(time)
+    gap_indices = np.where(time_diffs > gap_threshold)[0]
+    
+    time_segments = []
+    flux_segments = []
+    
+    start_idx = 0
+    for gap_idx in gap_indices:
+        end_idx = gap_idx + 1
+        time_segments.append(time[start_idx:end_idx])
+        flux_segments.append(flux[start_idx:end_idx])
+        start_idx = end_idx
+    
+    # Add the final segment
+    time_segments.append(time[start_idx:])
+    flux_segments.append(flux[start_idx:])
+    
+    return time_segments, flux_segments
+
 def detrend_segment(time, flux, error=None, poly_order=2, sigma_clip=3, max_iter=5):
     """
     Detrend a single segment using iterative sigma-clipping to preserve outliers.
@@ -210,10 +233,10 @@ def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatte
     lightkurve.LightCurve
         Reconstructed light curve with detrended transits and non-transits
     """
-    # Start with the original light curve arrays
-    reconstructed_flux = np.array(original_lc.flux)
-    reconstructed_time = np.array(original_lc.time.value)
-    reconstructed_error = np.array(original_lc.flux_err) if hasattr(original_lc, 'flux_err') else None
+    # Start with the original light curve arrays - ensure regular numpy arrays
+    reconstructed_flux = np.asarray(original_lc.flux)
+    reconstructed_time = np.asarray(original_lc.time.value)
+    reconstructed_error = np.asarray(original_lc.flux_err) if hasattr(original_lc, 'flux_err') else None
     
     # Get the non-transit light curve and optionally flatten it
     lc_no_transits = original_lc[~mask]
@@ -221,15 +244,14 @@ def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatte
         lc_no_transits, trend = lc_no_transits.flatten(window_length=window_length, return_trend=True)
     
     # Calculate the median of the non-transit flux (this is our reference level)
-    non_transit_median = np.median(lc_no_transits.flux)
+    non_transit_median = np.median(np.asarray(lc_no_transits.flux))
     
     # Replace non-transit points with the flattened version
-    reconstructed_flux[~mask] = lc_no_transits.flux
+    reconstructed_flux[~mask] = np.asarray(lc_no_transits.flux)
     
     # Now insert the detrended transit segments
     # We need to match each segment back to its position in the original light curve
     transit_lc = original_lc[mask]
-    transit_times = transit_lc.time.value
     
     # For each detrended segment, find where it belongs in the original light curve
     for segment in detrended_transit_segments:
@@ -249,7 +271,7 @@ def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatte
             
             reconstructed_flux[idx] = adjusted_flux
     
-    # Create the reconstructed light curve
+    # Create the reconstructed light curve - ensure all inputs are regular numpy arrays
     reconstructed_lc = lk.LightCurve(
         time=reconstructed_time,
         flux=reconstructed_flux,
@@ -257,6 +279,7 @@ def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatte
     )
     
     return reconstructed_lc, trend
+
 
 
 def extract_segments(masked_data, gap_threshold=20):
@@ -759,7 +782,7 @@ def lk_detrend(data, time, scale=401, return_trend = False):
 
 ## Ardor Tiers
 def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, host_name=None):
-    '''
+    """
     Tier 0 of ardor. This function accepts a TESS '...lc.fits' file, and returns
     a named tuple which contains a NAN free, detrended and normalized 
     light curve. Additionally returns the observation time, as well as a boolean
@@ -770,6 +793,15 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
     ----------
     TESS_fits_file : string
         The TESS light curve you wish to detrend and clean up.
+    scale : int, optional
+        Window length for flattening (default: 401).
+    injection : bool, optional
+        Whether to inject synthetic flares (default: False).
+    deep_transit : bool, optional
+        Whether to use specialized detrending for deep transits (default: False).
+    host_name : string, optional
+        Name of the host star, required when deep_transit=True (default: None).
+
     Returns
     -------
     LightCurve : named tuple
@@ -784,7 +816,14 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
             minutes. This only counts data present in the file, excludes gaps
             or NAN values. (float)
             - trend: The trend removed in the detrending step. (array)
-    '''
+    """
+    # Extract sector number from filename
+    sector_match = re.search(r'-s0*(\d+)-', TESS_fits_file)
+    if sector_match:
+        sector = int(sector_match.group(1))
+    else:
+        sector = None
+    
     if deep_transit == False:
         if TESS_fits_file.endswith('a_fast-lc.fits') == True:
             fast = True
@@ -797,54 +836,56 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
             lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
             detrend_flux, trend = lk_detrend(lc.flux, lc.time.value, scale=scale, return_trend= True)
             observation_time = cadence*len(lc.time.value)
-            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
-            lc = LightCurve(lc.time.value, lc.flux, detrend_flux, lc.flux_err, fast, observation_time, trend.flux)
+            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
+            lc = LightCurve(lc.time.value, lc.flux, detrend_flux, lc.flux_err, fast, observation_time, trend.flux, sector)
         elif injection == True:
             lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
             detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
             observation_time = cadence*len(lc.time)
-            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
-            lc = LightCurve(lc.time.value, lc.flux, detrend_flux, lc.error, fast, observation_time, trend.flux)
+            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
+            lc = LightCurve(lc.time.value, lc.flux, detrend_flux, lc.error, fast, observation_time, trend.flux, sector)
     elif deep_transit == True:
-            if TESS_fits_file.endswith('a_fast-lc.fits') == True:
-                    fast = True
-                    cadence = (1/3)
-            elif TESS_fits_file.endswith('a_fast-lc.fits') == False:  
-                fast = False
-                cadence = 2
-            if injection == False:
-                time, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
-                lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
-                observation_time = cadence*len(time)
-                period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
-                mask = lc.create_transit_mask(period, epoch, duration/24)
-                transits = lc[mask]
-                transit_segments = extract_segments(transits)
-                detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
-                # Reconstruct the full light curve with detrended transits
-                reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
-                LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
-                lc = LightCurve(reconstructed_lc.time.value, lc.flux, reconstructed_lc.flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux)
-            elif injection == True:
-                lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
-                detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
-                observation_time = cadence*len(lc.time)
-                b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
-                time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
-                lc = lk.LightCurve(time=time, flux=flux, flux_err=pdcsap_error)
-                observation_time = cadence*len(time)
-                period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
-                mask = lc.create_transit_mask(period, epoch, duration/24)
-                transits = lc[mask]
-                transit_segments = extract_segments(transits)
-                detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
-                # Reconstruct the full light curve with detrended transits
-                reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
-                LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend'])
-                lc = LightCurve(reconstructed_lc.time, reconstructed_lc.flux, reconstructed_lc.detrended_flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux)
+        if host_name is None:
+            raise ValueError("host_name must be provided when deep_transit is True.")
+        if TESS_fits_file.endswith('a_fast-lc.fits') == True:
+                fast = True
+                cadence = (1/3)
+        elif TESS_fits_file.endswith('a_fast-lc.fits') == False:  
+            fast = False
+            cadence = 2
+        if injection == False:
+            time, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
+            lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
+            observation_time = cadence*len(time)
+            period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
+            mask = lc.create_transit_mask(period, epoch, duration/24)
+            transits = lc[mask]
+            transit_segments = extract_segments(transits)
+            detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
+            # Reconstruct the full light curve with detrended transits
+            reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
+            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
+            lc = LightCurve(reconstructed_lc.time.value, lc.flux, reconstructed_lc.flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux, sector)
+        elif injection == True:
+            lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
+            detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
+            observation_time = cadence*len(lc.time)
+            b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
+            time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
+            lc = lk.LightCurve(time=time, flux=flux, flux_err=pdcsap_error)
+            observation_time = cadence*len(time)
+            period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
+            mask = lc.create_transit_mask(period, epoch, duration/24)
+            transits = lc[mask]
+            transit_segments = extract_segments(transits)
+            detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
+            # Reconstruct the full light curve with detrended transits
+            reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
+            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
+            lc = LightCurve(reconstructed_lc.time, reconstructed_lc.flux, reconstructed_lc.detrended_flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux, sector)
     return lc
 
-def tier1(detrend_flux, sigma, fast=False, injection = False, in_transit = False):
+def tier1(time, detrended_flux, sigma, fast=False, injection = False, in_transit = False):
     '''
     Tier 1 of ardor. This function accepts a detrended light curve flux array,
     and a sigma value for flare detection, and returns a named tuple containing
@@ -871,12 +912,18 @@ def tier1(detrend_flux, sigma, fast=False, injection = False, in_transit = False
             Used in tier 2.
 
     '''
-    flares, lengths = flare_ID(detrend_flux, sigma, fast=fast, injection = injection)
-    Flare = c.namedtuple('Flares', ['index', 'length'])
+    times, fluxes = split_by_gap(time, detrended_flux, gap_threshold=20)
+    flare_list = []
+    length_list = []
+    for detrend_flux in fluxes:
+        flares, lengths = flare_ID(detrend_flux, sigma, fast=fast, injection = injection)
+        Flare = c.namedtuple('Flares', ['index', 'length'])
+        flare_list.append(flares)
+        length_list.append(lengths)
     flare = Flare(flares, lengths)
     return flare
 
-def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
+def tier2(lc, flares, lengths, chi_square_cutoff = 1,
           output_dir = os.getcwd(), host_name = 'My_Host', csv = True, Sim = False, injection = False, const = 0, 
           extract_window = 50, catalog_name = 'All_Flare_Parameters.csv', header = False):
     '''
@@ -908,155 +955,204 @@ def tier2(time, flux, pdcsap_error, flares, lengths, chi_square_cutoff = 1,
     Snippets of the flares found from 
 
     '''
-    param = 1
-    TOI_ID_list, flare_number, peak_time, peak_time_BJD, amplitude, time_scale, flare_amplitude, flare_time_scale= [], [], [], [], [], [], [], []
-    accepted_flare_number, accepted_flare_index, param_list, event_list, chi_square_list = [], [], [], [], []
+    time = lc.time
+    flux = np.array(lc.detrended_flux)
+    pdcsap_error = lc.error.value
+    # Initialize result containers
+    results = {
+        'TOI_ID': [], 'flare_number': [], 'peak_time': [], 'peak_time_BJD': [],
+        'amplitude': [], 'time_scale': [], 'flare_amplitude': [], 'flare_time_scale': [],
+        'chi_square': [], 'event_index': []
+    }
+    
     flare_count = 0
-    total_flares = 0
-    flux = np.array(flux)
-    if csv == True:
-        os.makedirs(output_dir + '/' + str(host_name), exist_ok=True)
-    for index, flare_events in enumerate(flares):
-        if flare_events >= extract_window and len(flux) - flare_events > extract_window:
-            new_time = time[flare_events-extract_window:flare_events+extract_window]
-            new_data = flux[flare_events-extract_window:flare_events+extract_window]
-            new_error = pdcsap_error[flare_events-extract_window:flare_events+extract_window]
-            check = 1
-        elif flare_events < extract_window:
-            new_time = time[:flare_events+extract_window]
-            new_data = flux[:flare_events+extract_window]
-            new_error = pdcsap_error[0+flare_events:flare_events+extract_window]
-            check = 2
-        elif len(flux) - flare_events < extract_window:
-            new_time = time[flare_events:]
-            new_data = flux[flare_events:]
-            new_error = pdcsap_error[flare_events:]
-            check = 3
-        norm_time = time[flare_events]
+    
+    if csv:
+        os.makedirs(os.path.join(output_dir, str(host_name)), exist_ok=True)
+    
+    # Calculate median cadence for gap detection
+    time_diffs = np.diff(time)
+    median_cadence = np.median(time_diffs)
+    gap_threshold = 5 * median_cadence
+    
+    for index, flare_event in enumerate(flares):
+        # Extract flare segment with gap-aware boundaries
+        start_idx, end_idx, event_offset = _extract_flare_segment(
+            flare_event, len(flux), extract_window, time_diffs, gap_threshold
+        )
+        
+        new_time = time[start_idx:end_idx]
+        new_data = flux[start_idx:end_idx]
+        new_error = pdcsap_error[start_idx:end_idx]
+        
+        # Normalize time to flare peak
+        norm_time = time[flare_event]
         BJD = norm_time + 2457000
-        new_time = (new_time - norm_time)*24*60
-        if check == 1:
-            events = extract_window
-        elif check == 2:
-            events = flare_events
-        elif check == 3:
-            events = len(flux) - flare_events
-        r_sq = 0
+        new_time = (new_time - norm_time) * 24 * 60  # Convert to minutes
+        
+        # Fit exponential decay and validate
         try:
-            if lengths[index] >= 15:
-                log_data = (np.log(new_data[events:events+15] - np.min(new_data[events:events+15])*0.998))
-                log_error = np.sqrt(new_error[events:events+15]**2+ new_error[15]**2)/(new_data[events:events+15] - np.min(new_data[events:events+15])*0.999)
-                popt, pcov = curve_fit(linear, new_time[events:events+15],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
-                squares = (((log_data - linear(new_time[events:events+15], *popt))/(log_error)))**2
-                chi_squared = np.sum(squares)/13
-                x = linregress(new_time[events:events+10], log_data[0:10])
-                r_sq = x.rvalue**2
-            elif lengths[index] > 5 and lengths[index] < 15:
-                log_data = (np.log(new_data[events:events+10] - np.min(new_data[events:events+10])*0.998))
-                log_error = np.sqrt(new_error[events:events+10]**2+ new_error[10]**2)/(new_data[events:events+10] - np.min(new_data[events:events+10])*0.999)
-                popt, pcov = curve_fit(linear, new_time[events:events+10],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
-                squares = (((log_data - linear(new_time[events:events+10], *popt))/(log_error)))**2
-                chi_squared = np.sum(squares)/8
-                x = linregress(new_time[events:events+10], log_data[0:10])
-                r_sq = x.rvalue**2
-            elif lengths[index] == 5:
-                log_data = (np.log(new_data[events:events+5] - np.min(new_data[events:events+5])*0.998))
-                log_error = np.sqrt(new_error[events:events+5]**2+ new_error[5]**2)/(new_data[events:events+5] - np.min(new_data[events:events+5])*0.999)
-                popt, pcov = curve_fit(linear, new_time[events:events+5],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
-                squares = (((log_data - linear(new_time[events:events+5], *popt))/(log_error)))**2
-                chi_squared = np.sum(squares)/(3)
-            elif lengths[index] == 4:
-                log_data = (np.log(new_data[events:events+4] - np.min(new_data[events:events+4])*0.998))
-                log_error = np.sqrt(new_error[events:events+4]**2+ new_error[4]**2)/(new_data[events:events+4] - np.min(new_data[events:events+4])*0.999)
-                popt, pcov = curve_fit(linear, new_time[events:events+4],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
-                squares = (((log_data - linear(new_time[events:events+4], *popt))/(log_error)))**2
-                chi_squared = np.sum(squares)/(2)
-            elif lengths[index] == 3:
-                log_data = (np.log(new_data[events:events+3] - np.min(new_data[events:events+3])*0.998))
-                log_error = np.sqrt(new_error[events:events+3]**2+ new_error[3]**2)/(new_data[events:events+3] - np.min(new_data[events:events+3])*0.999)
-                popt, pcov = curve_fit(linear, new_time[events:events+3],log_data, maxfev=5000, sigma = log_error, absolute_sigma=True)
-                squares = (((log_data - linear(new_time[events:events+3], *popt))/(log_error)))**2
-                chi_squared = np.sum(squares)/(1)
-        except:
+            chi_squared, popt, r_sq = _fit_flare_decay(
+                new_time, new_data, new_error, event_offset, lengths[index]
+            )
+        except Exception:
             print('Flare ID Error')
             continue
-        if (chi_squared < chi_square_cutoff and popt[0] < 0) or r_sq > 0.8:
-            event_list.append(flare_events)
-            flare_count += 1
-            if Sim == True:
-                param_list.append(param)
-            time_scale.append(np.log(np.abs(popt[0])))
-            flare_time_scale.append(np.log(np.abs(popt[0])))
-            amplitude.append(np.log(popt[1]))
-            flare_amplitude.append(np.log(np.abs(popt[1])))
-            peak_time.append(norm_time)
-            peak_time_BJD.append(norm_time + 2457000)
-            TOI_ID_list.append(host_name)
-            flare_number.append(flare_count)
-            chi_square_list.append(chi_squared)
-            try:
-                X = np.column_stack((new_time/(24*60), new_data, new_error))
-            except:
-                X = np.column_stack(([0],[0],[0]))
-            accepted_flare_index.append(flares[index])
-            accepted_flare_number.append(flare_count)
-            if csv == True:
-                np.savetxt(os.path.join(output_dir, str(host_name), f'Flare_{flare_count + const}.csv'), X, delimiter=',', header=f'{BJD}')
-            total_flares += 1
         
-        else:
-            continue
-    if output_dir != None:
-        os.makedirs(output_dir, exist_ok=True)
-        if len(TOI_ID_list) > 0:
-            ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, peak_time_BJD, amplitude, time_scale,chi_square_list))
-            with open(output_dir + '/' + catalog_name, "a") as f:
-                if header == True:
-                    np.savetxt(f, [['Host_ID','Flare_#','Flare_Epoch','Flare_Epoch_BJD','Amplitude','FWHM','Chi_Sq.']], delimiter=",", fmt='%s')
-                np.savetxt(f, ZZ, delimiter=",", fmt='%s')
-                f.close()
-    if Sim == False and injection == False:
-        ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, amplitude, time_scale,chi_square_list))
-        return ZZ, flare_count
-    if Sim == True:
-        ZZ = np.column_stack((TOI_ID_list, np.array(flare_number) + const, peak_time, amplitude, time_scale,chi_square_list))
-        return ZZ
-    if injection == True and Sim == False:
-        return event_list
+        # Accept flare if it meets quality criteria
+        if (chi_squared < chi_square_cutoff and popt[0] < 0) or r_sq > 0.8:
+            flare_count += 1
+            
+            # Store results
+            results['TOI_ID'].append(host_name)
+            results['flare_number'].append(flare_count)
+            results['peak_time'].append(norm_time)
+            results['peak_time_BJD'].append(BJD)
+            results['amplitude'].append(np.log(popt[1]))
+            results['time_scale'].append(np.log(np.abs(popt[0])))
+            results['flare_amplitude'].append(np.log(np.abs(popt[1])))
+            results['flare_time_scale'].append(np.log(np.abs(popt[0])))
+            results['chi_square'].append(chi_squared)
+            results['event_index'].append(flare_event)
+            
+            if Sim:
+                results.setdefault('param', []).append(1)
+            
+            # Save individual flare CSV
+            if csv:
+                flare_data = np.column_stack((new_time / (24 * 60), new_data, new_error))
+                csv_path = os.path.join(output_dir, str(host_name), f'S{lc.sector}-Flare_{flare_count}.csv')
+                np.savetxt(csv_path, flare_data, delimiter=',', header=f'{BJD}')
+    
+    # Save catalog of all flares
+    if output_dir and results['TOI_ID']:
+        _save_flare_catalog(output_dir, catalog_name, results, lc.sector, const, header)
+    
+    # Return appropriate output based on mode
+    if Sim or not injection:
+        catalog_data = np.column_stack((
+            results['TOI_ID'], [lc.sector] * len(results['TOI_ID']),
+            results['flare_number'], results['peak_time'],
+            results['amplitude'], results['time_scale'], results['chi_square']
+        ))
+        return (catalog_data, flare_count) if not Sim else catalog_data
+    
+    return results['event_index']
+
+
+def _extract_flare_segment(flare_idx, flux_len, window, time_diffs, gap_threshold):
+    """Extract segment around flare, avoiding data gaps."""
+    start_idx = max(0, flare_idx - window)
+    end_idx = min(flux_len, flare_idx + window)
+    
+    # Check for gaps in backward direction
+    if flare_idx > 0:
+        backward_diffs = time_diffs[start_idx:flare_idx]
+        backward_gaps = np.where(backward_diffs > gap_threshold)[0]
+        if len(backward_gaps) > 0:
+            start_idx = flare_idx - len(backward_diffs) + backward_gaps[-1] + 1
+    
+    # Check for gaps in forward direction
+    if flare_idx < flux_len - 1:
+        forward_diffs = time_diffs[flare_idx:end_idx - 1]
+        forward_gaps = np.where(forward_diffs > gap_threshold)[0]
+        if len(forward_gaps) > 0:
+            end_idx = flare_idx + forward_gaps[0] + 1
+    
+    event_offset = flare_idx - start_idx
+    return start_idx, end_idx, event_offset
+
+
+def _fit_flare_decay(time, flux, error, event_idx, flare_length):
+    """Fit exponential decay to flare and return chi-squared and parameters."""
+    # Determine fit length based on flare duration
+    fit_lengths = {range(15, 1000): 15, range(6, 15): 10, (5,): 5, (4,): 4, (3,): 3}
+    fit_len = next((length for r, length in fit_lengths.items() if flare_length in r), 3)
+    
+    # Extract fit segment
+    fit_time = time[event_idx:event_idx + fit_len]
+    fit_flux = flux[event_idx:event_idx + fit_len]
+    fit_error = error[event_idx:event_idx + fit_len]
+    
+    # Log transform for linear fit
+    flux_min = np.min(fit_flux) * 0.998
+    log_flux = np.log(fit_flux - flux_min)
+    log_error = np.sqrt(fit_error**2 + fit_error[-1]**2) / (fit_flux - flux_min * 0.999)
+    
+    # Fit linear model to log-transformed data
+    popt, _ = curve_fit(linear, fit_time, log_flux, maxfev=5000, 
+                        sigma=log_error, absolute_sigma=True)
+    
+    # Calculate chi-squared
+    residuals = log_flux - linear(fit_time, *popt)
+    chi_squared = np.sum((residuals / log_error)**2) / max(1, fit_len - 2)
+    
+    # Calculate R-squared for additional validation
+    r_sq = 0
+    if fit_len >= 10:
+        regression = linregress(fit_time[:10], log_flux[:10])
+        r_sq = regression.rvalue**2
+    
+    return chi_squared, popt, r_sq
+
+
+def _save_flare_catalog(output_dir, catalog_name, results, sector, const, header):
+    """Save catalog of all detected flares."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    catalog_data = np.column_stack((
+        results['TOI_ID'], [sector] * len(results['TOI_ID']),
+        np.array(results['flare_number']) + const,
+        results['peak_time'], results['peak_time_BJD'],
+        results['amplitude'], results['time_scale'], results['chi_square']
+    ))
+    
+    catalog_path = os.path.join(output_dir, catalog_name)
+    with open(catalog_path, "a") as f:
+        if header:
+            header_row = [['Host_ID', 'Sector', 'Flare_#', 'Flare_Epoch', 
+                          'Flare_Epoch_BJD', 'Amplitude', 'FWHM', 'Chi_Sq.']]
+            np.savetxt(f, header_row, delimiter=",", fmt='%s')
+        np.savetxt(f, catalog_data, delimiter=",", fmt='%s')
                     
 def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_dir, catalog_dir = os.getcwd(),
-          host_name = 'My_Host', NS_CPUS = 10, baseline = 'hybrid_spline'):
-    '''
-    Tier 3 of ardor. This function accepts the output directory of tier 2, and runs
-    the MCMC fitting procedure on each flare found in tier 2, saving the results
-    to the specified output directory.
-
-    Parameters
-    ----------
-    tier_2_output_dir : string
-        The directory where the tier 2 flare csv files are located.
-    tier_3_working_dir : string
-        The working directory for tier 3. This is where temporary files will be stored.
-    tier_3_output_dir : string
-        The output directory for tier 3. This is where the final MCMC results will be stored.
-    settings_template_dir : string
-        The directory of the settings template file for MCMC fitting.
-    params_template_dir : string
-        The directory of the params template file for MCMC fitting.
-    host_name : string
-        The name of the host star. Used for naming output files.
-    T : float
-        The effective temperature of the host star. Used for flare energy calculations.
-    host_radius : float
-        The radius of the host star. Used for flare energy calculations.
-    MCMC_CPUS : int
-        The number of CPUs to use for MCMC fitting.
-
-    Returns
-    -------
-    None.
-
-    '''
+          host_name = 'My_Host', NS_CPUS = 10, baseline = 'hybrid_spline', N_Flare_to_Model = 1):
+    
+    """Process tier 3 flare analysis using allesfitter model comparison.
+        This function performs model comparison on flare candidates from tier 2 analysis,
+        runs nested sampling fits, and saves the best-fit parameters and outputs.
+        Parameters
+        ----------
+        tier_2_output_dir : str
+            Directory containing tier 2 flare CSV files to be processed.
+        tier_3_working_dir : str
+            Directory containing working directories for allesfitter model fitting.
+        tier_3_output_dir : str
+            Directory where tier 3 output files (plots, logs) will be saved.
+        templates_dir : str
+            Directory containing allesfitter template params.csv, settings.csv files.
+        catalog_dir : str, optional
+            Directory where the parameter catalog CSV will be saved. Default is current working directory.
+        host_name : str, optional
+            Name of the host star or object being analyzed. Default is 'My_Host'.
+        NS_CPUS : int, optional
+            Number of CPUs to use for nested sampling. Default is 10.
+        baseline : str, optional
+            Type of baseline model to use. Default is 'hybrid_spline'.
+        N_Flare_to_Model : int, optional
+            Number of flare models to compare. Default is 1.
+        Returns
+        -------
+        None
+            This function saves outputs to disk and does not return a value.
+        Notes
+        -----
+        - For each flare CSV in tier_2_output_dir, performs model comparison
+        - Saves best-fit parameters to a catalog CSV file
+        - Copies output files (corner plot, fit results, log) to the output directory
+        - Renames corner plots with flare-specific naming convention
+        - Clears working directories after processing each flare
+        - Creates output directory if it doesnt exists"""
     working_dirs = os.listdir(tier_3_working_dir)
     tier_3_working_dirs = []
     for dirs in working_dirs:
@@ -1065,7 +1161,8 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_di
     os.makedirs(os.path.join(tier_3_output_dir, host_name), exist_ok=True)
     output = os.path.join(tier_3_output_dir, host_name)
     for flares in flare_csvs:
-        params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, baseline= baseline, NS_CPUS= NS_CPUS, N_models=1)
+        params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, 
+                                                                baseline= baseline, NS_CPUS= NS_CPUS, N_models=N_Flare_to_Model)
         if params is not None:
             allesfitter_priors.save_params_to_csv(host_name, int((flares.replace('Flare_', '')).replace('.csv', '')), params, dlogZ, catalog_dir)
             allesfitter_priors.copy_output(tier_3_working_dirs[model], ['ns_corner', 'ns_fit', 'logfile'], output)
