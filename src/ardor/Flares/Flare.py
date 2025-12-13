@@ -17,7 +17,7 @@ from ardor.Flares import aflare
 import ardor.SPI_Forward_Models.SPI_Simulation as SPI
 import copy
 from ardor.Flares import allesfitter_priors
-from ardor.Data_Query.Data_Query import Query_Transit_Solution
+from ardor.Data_Query.Data_Query import Query_Transit_Solution, Query_Host_Params
 import lightkurve as lk
 import collections as c
 from matplotlib import pyplot as plt
@@ -781,7 +781,8 @@ def lk_detrend(data, time, scale=401, return_trend = False):
 
 
 ## Ardor Tiers
-def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, host_name=None):
+def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
+          host_name=None, manual_transit_solution = None):
     """
     Tier 0 of ardor. This function accepts a TESS '...lc.fits' file, and returns
     a named tuple which contains a NAN free, detrended and normalized 
@@ -848,8 +849,8 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
         if host_name is None:
             raise ValueError("host_name must be provided when deep_transit is True.")
         if TESS_fits_file.endswith('a_fast-lc.fits') == True:
-                fast = True
-                cadence = (1/3)
+            fast = True
+            cadence = (1/3)
         elif TESS_fits_file.endswith('a_fast-lc.fits') == False:  
             fast = False
             cadence = 2
@@ -857,7 +858,10 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
             time, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
             lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
             observation_time = cadence*len(time)
-            period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
+            if manual_transit_solution is not None and host_name is not None:
+                period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
+            else:
+                period, epoch, duration = manual_transit_solution
             mask = lc.create_transit_mask(period, epoch, duration/24)
             transits = lc[mask]
             transit_segments = extract_segments(transits)
@@ -870,11 +874,10 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
             lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
             detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
             observation_time = cadence*len(lc.time)
-            b, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
-            time, flux, pdcsap_error = delete_nans(b, pdcsap_flux, pdcsap_error)
-            lc = lk.LightCurve(time=time, flux=flux, flux_err=pdcsap_error)
-            observation_time = cadence*len(time)
-            period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
+            if manual_transit_solution is not None and host_name is not None:
+                period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
+            else:
+                period, epoch, duration = manual_transit_solution
             mask = lc.create_transit_mask(period, epoch, duration/24)
             transits = lc[mask]
             transit_segments = extract_segments(transits)
@@ -925,9 +928,9 @@ def tier1(time, detrended_flux, sigma, fast=False, injection = False, in_transit
 
 def tier2(lc, flares, lengths, chi_square_cutoff = 1,
           output_dir = os.getcwd(), host_name = 'My_Host', csv = True, Sim = False, injection = False, const = 0, 
-          extract_window = 50, catalog_name = 'All_Flare_Parameters.csv', header = False):
+          extract_window = 50, catalog_name = 'All_Flare_Parameters.csv', header = False, cum_obs_time = 0):
     '''
-    Tier 2 of ardor. This function accepts the time, detrended flux, and error arrays from a TESS light curve,
+    Tier 2 of ardor. This function accepts the 'lc' variable output from tier 0,
     as well as the flare indices and lengths from tier 1, and fits exponential decay models to each flare.
     It then outputs snippets of each flare to individual csv files, as well as a catalog of all flare parameters.
     Parameters
@@ -965,7 +968,7 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
         'chi_square': [], 'event_index': []
     }
     
-    flare_count = 0
+    flare_count = const
     
     if csv:
         os.makedirs(os.path.join(output_dir, str(host_name)), exist_ok=True)
@@ -987,7 +990,7 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
         
         # Normalize time to flare peak
         norm_time = time[flare_event]
-        BJD = norm_time + 2457000
+        BJD = norm_time
         new_time = (new_time - norm_time) * 24 * 60  # Convert to minutes
         
         # Fit exponential decay and validate
@@ -1021,12 +1024,15 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
             # Save individual flare CSV
             if csv:
                 flare_data = np.column_stack((new_time / (24 * 60), new_data, new_error))
-                csv_path = os.path.join(output_dir, str(host_name), f'S{lc.sector}-Flare_{flare_count}.csv')
+                if lc.fast_bool == False:
+                    csv_path = os.path.join(output_dir, str(host_name), f'S{lc.sector}-Flare_{flare_count}.csv')
+                elif lc.fast_bool == True:
+                    csv_path = os.path.join(output_dir, str(host_name), f'S{lc.sector}_fast-Flare_{flare_count}.csv')
                 np.savetxt(csv_path, flare_data, delimiter=',', header=f'{BJD}')
     
     # Save catalog of all flares
     if output_dir and results['TOI_ID']:
-        _save_flare_catalog(output_dir, catalog_name, results, lc.sector, const, header)
+        _save_flare_catalog(output_dir, catalog_name, results, lc.sector, flare_count, header, cum_obs_time=cum_obs_time)
     
     # Return appropriate output based on mode
     if Sim or not injection:
@@ -1037,7 +1043,7 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
         ))
         return (catalog_data, flare_count) if not Sim else catalog_data
     
-    return results['event_index']
+    return flare_count
 
 
 def _extract_flare_segment(flare_idx, flux_len, window, time_diffs, gap_threshold):
@@ -1096,7 +1102,7 @@ def _fit_flare_decay(time, flux, error, event_idx, flare_length):
     return chi_squared, popt, r_sq
 
 
-def _save_flare_catalog(output_dir, catalog_name, results, sector, const, header):
+def _save_flare_catalog(output_dir, catalog_name, results, sector, const, header, cum_obs_time = 0):
     """Save catalog of all detected flares."""
     os.makedirs(output_dir, exist_ok=True)
     
@@ -1104,19 +1110,19 @@ def _save_flare_catalog(output_dir, catalog_name, results, sector, const, header
         results['TOI_ID'], [sector] * len(results['TOI_ID']),
         np.array(results['flare_number']) + const,
         results['peak_time'], results['peak_time_BJD'],
-        results['amplitude'], results['time_scale'], results['chi_square']
+        results['amplitude'], results['time_scale'], results['chi_square'], np.ones(len(results['TOI_ID'])) * cum_obs_time
     ))
     
     catalog_path = os.path.join(output_dir, catalog_name)
     with open(catalog_path, "a") as f:
         if header:
             header_row = [['Host_ID', 'Sector', 'Flare_#', 'Flare_Epoch', 
-                          'Flare_Epoch_BJD', 'Amplitude', 'FWHM', 'Chi_Sq.']]
+                          'Flare_Epoch_BJD', 'Amplitude', 'FWHM', 'Chi_Sq.', 'Obs. Time']]
             np.savetxt(f, header_row, delimiter=",", fmt='%s')
         np.savetxt(f, catalog_data, delimiter=",", fmt='%s')
                     
 def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_dir, catalog_dir = os.getcwd(),
-          host_name = 'My_Host', NS_CPUS = 10, baseline = 'hybrid_spline', N_Flare_to_Model = 1):
+          host_name = 'My_Host', NS_CPUS = 10, baseline = 'hybrid_spline', N_Flare_to_Model = 1, cum_obs_time = 0, fast = False, sector=1):
     
     """Process tier 3 flare analysis using allesfitter model comparison.
         This function performs model comparison on flare candidates from tier 2 analysis,
@@ -1153,6 +1159,11 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_di
         - Renames corner plots with flare-specific naming convention
         - Clears working directories after processing each flare
         - Creates output directory if it doesnt exists"""
+    
+    if type(host_name) == str:
+        query_name = host_name.replace(' ', '_')
+    elif type(host_name) == int:
+        query_name = host_name
     working_dirs = os.listdir(tier_3_working_dir)
     tier_3_working_dirs = []
     for dirs in working_dirs:
@@ -1163,10 +1174,27 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_di
     for flares in flare_csvs:
         params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, 
                                                                 baseline= baseline, NS_CPUS= NS_CPUS, N_models=N_Flare_to_Model)
+        star = Query_Host_Params(query_name, table = 'pscomppars')
+        flare_params = []
+        upper_uncertainty = []
+        lower_uncertainty = []
         if params is not None:
-            allesfitter_priors.save_params_to_csv(host_name, int((flares.replace('Flare_', '')).replace('.csv', '')), params, dlogZ, catalog_dir)
+            N = len(params)
+            flare_number = int(flares.split('Flare_')[1].split('.csv')[0])
+            for param in params:
+                flare_params.append(param['epoch'][0])
+                flare_params.append(param['fwhm'][0])
+                flare_params.append(param['amplitude'][0])
+                lower_uncertainty.append(param['fwhm'][1])
+                upper_uncertainty.append(param['fwhm'][2])
+                lower_uncertainty.append(param['amplitude'][1])
+                upper_uncertainty.append(param['amplitude'][2])
+            energy, energy_l, energy_u = allesfitter_priors.flare_energy(np.array(flare_params), star.Teff[0], star.Radius[0], uncertainty = True, 
+                                                    param_lower=np.array(lower_uncertainty), param_upper=np.array(upper_uncertainty), Teff_unc=[star.Teff[1], star.Teff[2]], 
+                                                    R_unc=[star.Radius[1], star.Radius[2]], N=N)
+            allesfitter_priors.save_params_to_csv(host_name, flare_number, params, energy=[energy, energy_l, energy_u], dlogZ=dlogZ, output_dir=catalog_dir, cum_obs_time=cum_obs_time, fast=fast, sector=sector)
             allesfitter_priors.copy_output(tier_3_working_dirs[model], ['ns_corner', 'ns_fit', 'logfile'], output)
-            os.rename(os.path.join(output, 'ns_corner.pdf', ), os.path.join(output, f'Flare_{int((flares.replace("Flare_", "")).replace(".csv", ""))}_ns_corner.pdf'))
+            os.rename(os.path.join(output, 'ns_corner.pdf', ), os.path.join(output, f'{flares.replace(".csv", "")}_ns_corner.pdf'))
         for dirs in tier_3_working_dirs:
             allesfitter_priors.clear_workingdir(dirs)
 

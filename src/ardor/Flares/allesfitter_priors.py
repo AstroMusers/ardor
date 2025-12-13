@@ -60,8 +60,8 @@ def clear_workingdir(working_dir):
         file_path = os.path.join(working_dir, 'results', file_name)
         os.remove(file_path)
 
-def flare_energy(params, Teff, R_stellar, uncertainty = False, param_lower = [0,0,0], param_upper = [0,0,0], Teff_l = 0, Teff_u = 0,
-                 R_stellar_l = 0, R_stellar_u = 0, N = 1, N_samp = 1000):
+def flare_energy(params, Teff, R_stellar, uncertainty = False, param_lower = [0,0,0], param_upper = [0,0,0], Teff_unc=[0,0],
+                 R_unc = [0,0], N = 1, N_samp = 1000):
     if len(params) != 3*N:
         raise ValueError("Parameter length does not match number of flares.")
     for flares in range(N):
@@ -81,36 +81,36 @@ def flare_energy(params, Teff, R_stellar, uncertainty = False, param_lower = [0,
             samples = []
             for flare_samples in range(N_samp):
                 if N == 1:
-                    R_stellar_sample = asymmetric_sample(R_stellar, R_stellar_u, R_stellar_l)
-                    Teff_sample = asymmetric_sample(Teff, Teff_u, Teff_l)
-                    fwhm_sample = asymmetric_sample(params[1], param_upper[1], param_lower[1])
-                    ampl_sample = asymmetric_sample(params[2], param_upper[2], param_lower[2])
+                    R_stellar_sample = asymmetric_sample(R_stellar, R_unc[0], R_unc[1])
+                    Teff_sample = asymmetric_sample(Teff, Teff_unc[0], Teff_unc[1])
+                    fwhm_sample = asymmetric_sample(params[1], param_upper[0], param_lower[0])
+                    ampl_sample = asymmetric_sample(params[2], param_upper[1], param_lower[1])
                     y = aflare.aflare(x, [params[0], fwhm_sample, ampl_sample])
                     flare_temp = np.random.normal(loc=9000, scale=500)
                     color_factor = planck_integrator(600e-6, 1000e-6, Teff_sample)/planck_integrator(600e-6, 1000e-6, flare_temp)
                     energy_sample = (5.67e-8)*(flare_temp**4)*(flare_area)*np.pi*(R_stellar_sample*6.957e8*R_stellar_sample*6.957e8)*color_factor*(1e7)*86400
                     samples.append(energy_sample)
                 if N == 2:
-                    R_stellar_sample = asymmetric_sample(R_stellar, R_stellar_u, R_stellar_l)
-                    Teff_sample = asymmetric_sample(Teff, Teff_u, Teff_l)
-                    fwhm1_sample = asymmetric_sample(params[1], param_upper[1], param_lower[1])
-                    ampl1_sample = asymmetric_sample(params[2], param_upper[2], param_lower[2])
-                    fwhm2_sample = asymmetric_sample(params[4], param_upper[4], param_lower[4])
-                    ampl2_sample = asymmetric_sample(params[5], param_upper[5], param_lower[5])
+                    R_stellar_sample = asymmetric_sample(R_stellar, R_unc[0], R_unc[1])
+                    Teff_sample = asymmetric_sample(Teff, Teff_unc[0], Teff_unc[1])
+                    fwhm1_sample = asymmetric_sample(params[1], param_upper[0], param_lower[0])
+                    ampl1_sample = asymmetric_sample(params[2], param_upper[1], param_lower[1])
+                    fwhm2_sample = asymmetric_sample(params[3], param_upper[2], param_lower[2])
+                    ampl2_sample = asymmetric_sample(params[4], param_upper[3], param_lower[3])
                     y = aflare.aflare(x, [params[0], fwhm1_sample, ampl1_sample, params[3], fwhm2_sample, ampl2_sample])
                     flare_temp = np.random.normal(loc=9000, scale=500)
                     color_factor = planck_integrator(600e-6, 1000e-6, Teff_sample)/planck_integrator(600e-6, 1000e-6, flare_temp)
                     energy_sample = (5.67e-8)*(flare_temp**4)*(flare_area)*np.pi*(R_stellar_sample*6.957e8*R_stellar_sample*6.957e8)*color_factor*(1e7)*86400
                     samples.append(energy_sample)
                 if N == 3:
-                    R_stellar_sample = asymmetric_sample(R_stellar, R_stellar_u, R_stellar_l)
-                    Teff_sample = asymmetric_sample(Teff, Teff_u, Teff_l)
-                    fwhm1_sample = asymmetric_sample(params[1], param_upper[1], param_lower[1])
-                    ampl1_sample = asymmetric_sample(params[2], param_upper[2], param_lower[2])
-                    fwhm2_sample = asymmetric_sample(params[4], param_upper[4], param_lower[4])
-                    ampl2_sample = asymmetric_sample(params[5], param_upper[5], param_lower[5])
-                    fwhm3_sample = asymmetric_sample(params[7], param_upper[7], param_lower[7])
-                    ampl3_sample = asymmetric_sample(params[8], param_upper[8], param_lower[8])
+                    R_stellar_sample = asymmetric_sample(R_stellar, R_unc[0], R_unc[1])
+                    Teff_sample = asymmetric_sample(Teff, Teff_unc[0], Teff_unc[1])
+                    fwhm1_sample = asymmetric_sample(params[1], param_upper[0], param_lower[0])
+                    ampl1_sample = asymmetric_sample(params[2], param_upper[1], param_lower[1])
+                    fwhm2_sample = asymmetric_sample(params[3], param_upper[2], param_lower[2])
+                    ampl2_sample = asymmetric_sample(params[4], param_upper[3], param_lower[3])
+                    fwhm3_sample = asymmetric_sample(params[5], param_upper[4], param_lower[4])
+                    ampl3_sample = asymmetric_sample(params[6], param_upper[5], param_lower[5])
                     y = aflare.aflare(x, [params[0], fwhm1_sample, ampl1_sample, params[3], fwhm2_sample, ampl2_sample, params[6], fwhm3_sample, ampl3_sample])
                     flare_temp = np.random.normal(loc=9000, scale=500)
                     color_factor = planck_integrator(600e-6, 1000e-6, Teff_sample)/planck_integrator(600e-6, 1000e-6, flare_temp)
@@ -179,8 +179,12 @@ def return_flare_time_priors(peak_times, min_times):
     priors = []
     for idx, t in enumerate(peak_times):
         if idx == 0:
-            prior_lower = -0.1
-            prior_upper = 0 + min_times[0]
+            try:
+                prior_lower = -0.1
+                prior_upper = 0 + min_times[0]
+            except:
+                prior_lower = -0.1
+                prior_upper = 0 + 0.002
         elif idx != 0:
             try:
                 prior_lower = min_times[idx - 1]
@@ -448,13 +452,27 @@ def construct_settings_file(settings_file_dir, working_dir, baseline = 'hybrid_s
     table['value'][table['#name'] == 'ns_tol'] = ns_tol
     ascii.write(table, os.path.join(working_dir, 'settings.csv'), overwrite=True, format='csv')
 
-def save_params_to_csv(host_name, flare_number, params, dlogZ, output_dir):
-    """_summary_
-
-    Args:
-        params (list of dicts): List of dictionaries containing flare parameters.
-        dlogZ (float): Logarithmic evidence difference.
-        output_csv (str): Directory to save the output CSV file.
+def save_params_to_csv(host_name, flare_number, params, dlogZ, output_dir, energy = [np.nan,np.nan,np.nan], cum_obs_time=0, fast=False, sector = 1):
+    """Save flare parameters to a CSV file.
+    Writes flare detection and characterization parameters to a CSV file named
+    'Tier_3_Flare_Params.csv'. Creates the file with appropriate headers if it
+    does not exist. Supports both fast (20-sec) and standard (2-min) cadence data.
+        host_name (str): Identifier for the host star.
+        flare_number (int): Flare identification number.
+        params (list of dict): List of dictionaries containing flare parameters with keys:
+            - 'epoch_BJD': tuple of (value, lower_error, upper_error) in BJD
+            - 'amplitude': tuple of (value, lower_error, upper_error) in relative flux
+            - 'fwhm': tuple of (value, lower_error, upper_error) in days
+        dlogZ (float): Logarithmic evidence difference for the flare detection.
+        output_dir (str): Directory path where the CSV file will be saved.
+        energy (list of float, optional): Energy measurements as [value, lower_error, upper_error] in erg.
+            Defaults to [np.nan, np.nan, np.nan].
+        cum_obs_time (float, optional): Cumulative observation time in minutes. Defaults to 0.
+        fast (bool, optional): If True, use 20-sec cadence; if False, use 2-min cadence.
+            Defaults to False.
+        sector (int, optional): TESS sector number. Defaults to 1.
+    Returns:
+        None. Writes data to CSV file.
     """
     N_flares = len(params)
     try:
@@ -462,11 +480,17 @@ def save_params_to_csv(host_name, flare_number, params, dlogZ, output_dir):
     except FileNotFoundError:
         file_name = output_dir + '/Tier_3_Flare_Params.csv'
         with open(output_dir + '/Tier_3_Flare_Params.csv', "a") as f:
-            f.write('Host_ID,Flare_#,Epoch_BJD,Epoch_errl,Epoch_erru,Amplitude,Amplitude_errl,Amplitude_erru,FWHMt,FWHM_errl,FWHM_erru,Outburst,dlogZ\n')
+            f.write('Host_ID,Sector,Flare_#,Epoch_BJD,Epoch_errl,Epoch_erru,Amplitude,Amplitude_errl,Amplitude_erru,FWHMt,FWHM_errl,FWHM_erru,Energy,Energy_errl,Energy_erru,Outburst,dlogZ,Cum_Obs_Time,Cadence\n')
+            f.write('--,--,--,[BJD],[d],[d],[rel. flux],[rel. flux],[rel. flux],[d],[d],[d],[erg],[erg],[erg],--,--,[min],--\n')
     for idx in range(N_flares):
-        ZZ = np.column_stack((host_name, flare_number,params[idx]['epoch'][0], params[idx]['epoch'][1], params[idx]['epoch'][2], 
-                              params[idx]['amplitude'][0], params[idx]['amplitude'][1], params[idx]['amplitude'][2], 
-                              params[idx]['fwhm'][0], params[idx]['fwhm'][1], params[idx]['fwhm'][2], idx, dlogZ))
+        if fast == False:
+            ZZ = np.column_stack((host_name, sector, flare_number,params[idx]['epoch_BJD'][0], params[idx]['epoch_BJD'][1], params[idx]['epoch_BJD'][2], 
+                                params[idx]['amplitude'][0], params[idx]['amplitude'][1], params[idx]['amplitude'][2], 
+                                params[idx]['fwhm'][0], params[idx]['fwhm'][1], params[idx]['fwhm'][2], energy[0], energy[1], energy[2], idx, dlogZ, cum_obs_time, '2-min'))
+        if fast == True:
+            ZZ = np.column_stack((host_name, sector, flare_number,params[idx]['epoch_BJD'][0], params[idx]['epoch_BJD'][1], params[idx]['epoch_BJD'][2], 
+                                params[idx]['amplitude'][0], params[idx]['amplitude'][1], params[idx]['amplitude'][2], 
+                                params[idx]['fwhm'][0], params[idx]['fwhm'][1], params[idx]['fwhm'][2], energy[0], energy[1], energy[2], idx, dlogZ, cum_obs_time, '20-sec'))
         with open(output_dir + '/Tier_3_Flare_Params.csv', "a") as f:
             np.savetxt(f, ZZ, delimiter=",", fmt='%s')
 def param_unpacker(allesclass, time_const = 2457000, N = 1):
@@ -481,7 +505,8 @@ def param_unpacker(allesclass, time_const = 2457000, N = 1):
         t_u = allesclass.posterior_params_ul[f'flare_tpeak_{flares+1}']
         fwhm_u = allesclass.posterior_params_ul[f'flare_fwhm_{flares+1}']
         amp_u = allesclass.posterior_params_ul[f'flare_ampl_{flares+1}']
-        param_dict = {f'epoch': [t+time_const, t_l, t_u],
+        param_dict = {f'epoch_BJD': [t+time_const, t_l, t_u],
+                      f'epoch': [t, t_l, t_u],
                       f'fwhm': [fwhm, fwhm_l, fwhm_u],
                       f'amplitude': [amp, amp_l, amp_u]}
         params.append(param_dict)

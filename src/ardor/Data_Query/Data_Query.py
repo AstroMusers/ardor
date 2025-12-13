@@ -10,7 +10,7 @@ from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive a
 import os
 import shutil
 import numpy as np
-import pandas as pd
+from collections import namedtuple
 def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_list, radius = 0.01):
     '''
     
@@ -166,3 +166,50 @@ def Query_Transit_Solution(identifier, table = "ps"):
             transit_mids.append(float(np.nanmax(query_planet['pl_tranmid'].value))) 
             durations.append(float(np.nanmedian(query_planet['pl_trandur'].value)))
     return np.array(periods), np.array(transit_mids), np.array(durations)
+
+def Query_Host_Params(identifier, table = "pscomppars"):
+    """Query the NASA Exoplanet Archive for stellar parameters of a host star.
+    This function retrieves stellar parameters (effective temperature, stellar radius, and stellar mass)
+    for a star associated with a given identifier from the NASA Exoplanet Archive.
+    Star : namedtuple
+        A named tuple containing the following stellar parameters:
+        - Teff : float
+            Effective temperature of the star in Kelvin.
+        - st_rad : float
+            Stellar radius in solar radii.
+        - st_mass : float
+            Stellar mass in solar masses.
+    - For table='ps', the function returns the median effective temperature and mass, and the maximum
+      stellar radius from potentially multiple entries per star.
+    """
+
+    if type(identifier) == float or type(identifier) == int:
+        query = nea.query_criteria(table=table, select="st_teff,st_rad,st_mass,st_tefferr1,st_raderr1,st_masserr1,st_tefferr2,st_raderr2,st_masserr2",
+                                    where=f"tic_id='TIC {str(int(identifier))}'")
+    elif type(identifier) == str:
+        query = nea.query_criteria(table=table, select="st_teff,st_rad,st_mass,st_tefferr1,st_raderr1,st_masserr1,st_tefferr2,st_raderr2,st_masserr2",
+                                    where=f"hostname like '{str(identifier)}'")
+    else:
+        raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
+    if table == 'pscomppars':
+        Teff = float(query['st_teff'][0].value)
+        Teff_u = float(query['st_tefferr1'][0].value)
+        Teff_l = float(query['st_tefferr2'][0].value)
+        st_rad = float(query['st_rad'][0].value)
+        st_rad_u = float(query['st_raderr1'][0].value)
+        st_rad_l = float(query['st_raderr2'][0].value)
+        st_mass = float(query['st_mass'][0].value)
+        st_mass_u = float(query['st_masserr1'][0].value)
+        st_mass_l = float(query['st_masserr2'][0].value)
+    elif table == 'ps':
+        Teff = float(np.nanmedian(query['st_teff'].value))
+        Teff_u = float(np.nanmax(query['st_tefferr1'].value))
+        Teff_l = float(np.nanmax(query['st_tefferr2'].value))
+        st_rad = float(np.nanmax(query['st_rad'].value))
+        st_rad_u = float(np.nanmax(query['st_raderr1'].value))
+        st_rad_l = float(np.nanmax(query['st_raderr2'].value))
+        st_mass = float(np.nanmedian(query['st_mass'].value))
+        st_mass_u = float(np.nanmax(query['st_masserr1'].value))
+        st_mass_l = float(np.nanmax(query['st_masserr2'].value))
+    Star = namedtuple("Star", ["Teff", "Radius", "Mass"])
+    return Star((Teff,Teff_u,Teff_l), (st_rad,st_rad_u,st_rad_l), (st_mass,st_mass_u,st_mass_l))
