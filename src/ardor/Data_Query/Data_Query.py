@@ -11,6 +11,7 @@ import os
 import shutil
 import numpy as np
 from collections import namedtuple
+from astroquery.mast import Catalogs
 def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_list, radius = 0.01):
     '''
     
@@ -213,3 +214,103 @@ def Query_Host_Params(identifier, table = "pscomppars"):
         st_mass_l = float(np.nanmax(query['st_masserr2'].value))
     Star = namedtuple("Star", ["Teff", "Radius", "Mass"])
     return Star((Teff,Teff_u,Teff_l), (st_rad,st_rad_u,st_rad_l), (st_mass,st_mass_u,st_mass_l))
+
+
+
+def Query_Host_Params_TOI(identifier):
+    """Query the NASA Exoplanet Archive for stellar parameters of a host star using TOI identifier.
+
+    This function retrieves stellar parameters (effective temperature and stellar radius with uncertainties)
+    for a star associated with a given TOI (TESS Object of Interest) identifier from the NASA Exoplanet Archive.
+
+    Parameters
+    ----------
+    identifier : int or str
+        The TOI identifier number. Will be converted to integer format for the query.
+
+    Returns
+    -------
+        - Teff : tuple of float
+            Effective temperature of the star in Kelvin as (value, upper_error, lower_error).
+        - Radius : tuple of float
+            Stellar radius in solar radii as (value, upper_error, lower_error).
+
+    Raises
+    ------
+    ValueError
+        If the identifier cannot be converted to an integer TOI ID.
+
+    Notes
+    -----
+    - The function queries the NASA Exoplanet Archive using the 'toipfx' field.
+    - Upper uncertainties (err1) are returned as positive values.
+    - Lower uncertainties (err2) are returned as positive values (negation applied).
+    - Only the first result from the query is returned.
+    """
+    try:
+        query = nea.query_criteria(table=table, select="st_teff,st_rad,st_tefferr1,st_raderr1,st_tefferr2,st_raderr2",
+                                    where=f"toipfx='{str(int(identifier))}'")
+    except:
+        raise ValueError("Identifier must be the TOI ID as an integer.")
+    print(query)
+    Teff = float(query['st_teff'][0].value)
+    Teff_u = float(query['st_tefferr1'][0].value)
+    Teff_l = -float(query['st_tefferr2'][0].value)
+    st_rad = float(query['st_rad'][0].value)
+    st_rad_u = float(query['st_raderr1'][0].value)
+    st_rad_l = -float(query['st_raderr2'][0].value)
+    Star = namedtuple("Star", ["Teff", "Radius"])
+    return Star((Teff,Teff_u,Teff_l), (st_rad,st_rad_u,st_rad_l))
+
+def Query_Transit_Solution_TOI(identifier):
+    """
+    Query the NASA Exoplanet Archive for transit solution parameters of TOI planets.
+    
+    This function retrieves transit parameters (orbital period, transit mid-time, and transit duration)
+    for planets associated with a given TOI (TESS Object of Interest) identifier from the NASA Exoplanet Archive.
+    
+    Parameters
+    ----------
+    identifier : int or float
+        The TOI identifier number. Will be converted to integer format for the query.
+    
+    Returns
+    -------
+    periods : numpy.ndarray
+        Array of orbital periods in days for each planet with transit data.
+    transit_mids : numpy.ndarray
+        Array of transit mid-times (BJD) for each planet with transit data.
+    durations : numpy.ndarray
+        Array of transit durations in hours for each planet with transit data.
+    
+    Raises
+    ------
+    ValueError
+        If identifier is not a numeric type (int or float).
+    
+    Notes
+    -----
+    - The function queries the 'toi' table using the 'toipfx' field.
+    - The function returns the median period and duration, and the maximum
+      transit mid-time from potentially multiple entries per TOI.
+    - All returned arrays have the same length, corresponding to the number of
+      TOIs found matching the identifier.
+    """
+
+
+    if type(identifier) == float or type(identifier) == int:
+        query = nea.query_criteria(table="toi", select="toi,pl_orbper,pl_tranmid,pl_trandurh",
+                                    where=f"toipfx='{str(int(identifier))}'")
+    else:
+        raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
+    planets = set(query['toi'])
+    periods = []
+    transit_mids = []
+    durations = []
+    for planet in planets:
+        mask = (query['toi'] == planet)
+        query_planet = query[mask]
+        periods.append(float(np.nanmedian(query_planet['pl_orbper'].value)))
+        transit_mids.append(float(np.nanmax(query_planet['pl_tranmid'].value))) 
+        durations.append(float(np.nanmedian(query_planet['pl_trandurh'].value)))
+    return np.array(periods), np.array(transit_mids), np.array(durations)
