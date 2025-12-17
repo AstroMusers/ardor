@@ -248,11 +248,10 @@ def Query_Host_Params_TOI(identifier):
     - Only the first result from the query is returned.
     """
     try:
-        query = nea.query_criteria(table=table, select="st_teff,st_rad,st_tefferr1,st_raderr1,st_tefferr2,st_raderr2",
+        query = nea.query_criteria(table="toi", select="st_teff,st_rad,st_tefferr1,st_raderr1,st_tefferr2,st_raderr2",
                                     where=f"toipfx='{str(int(identifier))}'")
     except:
         raise ValueError("Identifier must be the TOI ID as an integer.")
-    print(query)
     Teff = float(query['st_teff'][0].value)
     Teff_u = float(query['st_tefferr1'][0].value)
     Teff_l = -float(query['st_tefferr2'][0].value)
