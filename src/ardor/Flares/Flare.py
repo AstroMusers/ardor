@@ -4,7 +4,7 @@ Created on Wed May 31 12:20:10 2023
 
 @author: Nate Whitsett
 """
-#%%
+from collections import namedtuple
 from astropy.io import fits
 from astropy.timeseries import LombScargle as LS
 from scipy.optimize import curve_fit
@@ -872,8 +872,8 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False,
             observation_time = cadence*len(time)
             if manual_transit_solution is not None and host_name is not None and TOI_Bool == False:
                 period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
-            elif manual_transit_solution is not None and host_name is not None and TOI_Bool == True:
-                period, epoch, duration = Query_Transit_Solution_TOI(host_name)
+            elif TOI_Bool == True:
+                period, epoch, duration = Query_Transit_Solution_TOI(int(host_name))
             else:
                 period, epoch, duration = manual_transit_solution
             mask = lc.create_transit_mask(period, epoch, duration/24)
@@ -891,7 +891,7 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False,
             if manual_transit_solution is not None and host_name is not None and TOI_Bool == False:
                 period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
             elif manual_transit_solution is not None and host_name is not None and TOI_Bool == True:
-                period, epoch, duration = Query_Transit_Solution_TOI(host_name)
+                period, epoch, duration = Query_Transit_Solution_TOI(int(host_name))
             else:
                 period, epoch, duration = manual_transit_solution
             mask = lc.create_transit_mask(period, epoch, duration/24)
@@ -1187,11 +1187,25 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_di
     flare_csvs = os.listdir(tier_2_output_dir)
     os.makedirs(os.path.join(tier_3_output_dir, dir_name), exist_ok=True)
     output = os.path.join(tier_3_output_dir, dir_name)
+    completed = os.listdir(output)
+    if len(completed) > 0:
+        last_completed = completed[-1]
+        last_completed = last_completed.replace('_ns_corner.pdf', '.csv')
+        idx = flare_csvs.index(last_completed)
+        flare_csvs = flare_csvs[idx+1:]
     for flares in flare_csvs:
-        params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, 
-                                                                baseline= baseline, NS_CPUS= NS_CPUS, N_models=N_Flare_to_Model)
+        if N_Flare_to_Model == 1:
+            params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, 
+                                                                    baseline= baseline, NS_CPUS= NS_CPUS, N_models=N_Flare_to_Model)
+        elif N_Flare_to_Model > 1:
+            params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, 
+                                                                    baseline= baseline, NS_CPUS= NS_CPUS, N_models=N_Flare_to_Model)
         if TOI_Bool == False:
-            star = Query_Host_Params(query_name, table = 'pscomppars')
+            try:
+                star = Query_Host_Params(query_name, table = 'pscomppars')
+            except:
+                Star = namedtuple("Star", ["Teff", "Radius", "Mass"])
+                star = Star((4000,500,-500), (1,0.1,-0.1), (1,0.1,-0.1))
         elif TOI_Bool == True:
             star = Query_Host_Params_TOI(int(query_name))
         flare_params = []

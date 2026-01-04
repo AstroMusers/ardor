@@ -144,6 +144,7 @@ def Query_Transit_Solution(identifier, table = "ps"):
         query = nea.query_criteria(table=table, select="pl_letter,tran_flag,pl_orbper,pl_tranmid,pl_trandur",
                                     where=f"tic_id='TIC {str(int(identifier))}'")
     elif type(identifier) == str:
+        identifier = string_checker(identifier)
         query = nea.query_criteria(table=table, select="pl_letter,tran_flag,pl_orbper,pl_tranmid,pl_trandur",
                                     where=f"hostname like '{str(identifier)}'")
     else:
@@ -188,6 +189,7 @@ def Query_Host_Params(identifier, table = "pscomppars"):
         query = nea.query_criteria(table=table, select="st_teff,st_rad,st_mass,st_tefferr1,st_raderr1,st_masserr1,st_tefferr2,st_raderr2,st_masserr2",
                                     where=f"tic_id='TIC {str(int(identifier))}'")
     elif type(identifier) == str:
+        identifier = string_checker(identifier)
         query = nea.query_criteria(table=table, select="st_teff,st_rad,st_mass,st_tefferr1,st_raderr1,st_masserr1,st_tefferr2,st_raderr2,st_masserr2",
                                     where=f"hostname like '{str(identifier)}'")
     else:
@@ -313,3 +315,35 @@ def Query_Transit_Solution_TOI(identifier):
         transit_mids.append(float(np.nanmax(query_planet['pl_tranmid'].value))) 
         durations.append(float(np.nanmedian(query_planet['pl_trandurh'].value)))
     return np.array(periods), np.array(transit_mids), np.array(durations)
+
+def string_checker(identifier):
+    """Function to standardize stellar identifiers by inserting spaces where appropriate."""
+    if (identifier.startswith('L') and 'LHS' not in identifier and 'LP' not in identifier and 'Lupus' not in identifier) and ' ' not in identifier:
+        identifier = identifier[0:2] + ' ' + identifier[2:]
+    if (identifier.startswith('HD') or identifier.startswith('CD') or identifier.startswith('Gl') or identifier.startswith('WD') or identifier.startswith('HR') or identifier.startswith('GJ')) and ' ' not in identifier:
+        identifier = identifier[0:2] + ' ' + identifier[2:]
+    if (identifier.startswith('HIP') or identifier.startswith('LHS') or identifier.startswith('TAP') or identifier.startswith('TIC')) and ' ' not in identifier:
+        identifier = identifier[0:3] + ' ' + identifier[3:]
+    if (identifier.startswith('EPIC') or identifier.startswith('Ross') or identifier.startswith('Wolf')) and ' ' not in identifier:
+        identifier = identifier[0:4] + ' ' + identifier[4:]
+    if (identifier.startswith('Gliese')) and ' ' not in identifier:
+        identifier = identifier[0:7] + ' ' + identifier[7:]
+    if identifier.startswith('Proxima') and ' ' not in identifier:
+        identifier = 'Proxima Cen'
+    if identifier.startswith('AU') and ' ' not in identifier:
+        identifier = 'AU Mic'
+    if identifier.startswith('tau') and ' ' not in identifier:
+        identifier = 'tau Boo'
+    if identifier.startswith('tau') and ' ' not in identifier:
+        identifier = 'tau Boo'
+    if identifier.startswith('ups') and ' ' not in identifier:
+        identifier = 'ups And'
+    if identifier.startswith('HSPsc') and ' ' not in identifier:
+        identifier = 'HS Psc'
+    if identifier.startswith("Barnard'sstar") and ' ' not in identifier:
+        identifier = "Barnard's star"
+    if identifier.startswith("51Peg") and ' ' not in identifier:
+        identifier = "51 Peg"
+    if identifier.startswith("61Vir") and ' ' not in identifier:
+        identifier = "61 Vir"
+    return identifier

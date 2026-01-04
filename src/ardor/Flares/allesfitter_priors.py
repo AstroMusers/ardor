@@ -175,24 +175,32 @@ def find_local_maxima(time, data):
     if len(min_times) > 3:
         min_times = min_times[:3]
     return peak_times, min_times
-def return_flare_time_priors(peak_times, min_times):
+def return_flare_time_priors(peak_times, min_times, simple = False):
     priors = []
-    for idx, t in enumerate(peak_times):
-        if idx == 0:
-            try:
-                prior_lower = -0.1
-                prior_upper = 0 + min_times[0]
-            except:
-                prior_lower = -0.1
-                prior_upper = 0 + 0.002
-        elif idx != 0:
-            try:
-                prior_lower = min_times[idx - 1]
-                prior_upper = min_times[idx]
-            except IndexError:
-                prior_upper = t + 0.002
-                prior_lower = min_times[-1]
-        priors.append([prior_lower, prior_upper])
+    if simple == True:
+        for idx, t in enumerate(peak_times):
+            if idx == 0:
+                prior_lower = -0.02
+                prior_upper = 0.02
+            priors.append([prior_lower, prior_upper])
+        return priors
+    elif simple == False:
+        for idx, t in enumerate(peak_times):
+            if idx == 0:
+                try:
+                    prior_lower = -0.1
+                    prior_upper = 0 + min_times[0]
+                except:
+                    prior_lower = -0.1
+                    prior_upper = 0 + 0.002
+            elif idx != 0:
+                try:
+                    prior_lower = min_times[idx - 1]
+                    prior_upper = min_times[idx]
+                except IndexError:
+                    prior_upper = t + 0.002
+                    prior_lower = min_times[-1]
+            priors.append([prior_lower, prior_upper])
     return priors
 
 def csv_cleaner(flare_csv_dir):
@@ -203,6 +211,7 @@ def csv_cleaner(flare_csv_dir):
     error = np.array(data[2])
     gap_index = 0
     error_index = []
+    amp_guess = max(flux)
     for index in range(len(time) - 1):
         dt = time[index + 1] - time[index]
         if dt > 10:
@@ -226,7 +235,7 @@ def csv_cleaner(flare_csv_dir):
         error = error[:gap_index]
     output = np.stack((time,flux,error)).T
     np.savetxt(flare_csv_dir, output, delimiter=',', fmt='%s', comments='')
-    return BJD
+    return BJD, amp_guess - 1
 
 def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spline', N_models = 3, dlogZ_threshold = 2, NS_CPUS = 10):
     """Uses Nested Sampling to compare different number of peaks in a flare model. Begins comparing no flare
@@ -248,13 +257,16 @@ def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spli
     """
     if len(working_dirs) < N_models + 1:
         raise ValueError("Working dirs length does not match number of models.")
-    BJD = csv_cleaner(target_file)
+    BJD, amp_guess = csv_cleaner(target_file)
     file_num = os.path.basename(target_file).split('.csv')[0]
     time, data, error = np.array(pd.read_csv(target_file, header=None)[0]), np.array(pd.read_csv(target_file, header=None)[1]), np.array(pd.read_csv(target_file, header=None)[2])
     slice_time, slice_data = slice_flare(time, data)
     peak_times, min_times = find_local_maxima(slice_time, slice_data)
     peak_time_best_guess = peak_times
-    peak_time_priors = return_flare_time_priors(peak_times, min_times)
+    if N_models == 1:
+        peak_time_priors = return_flare_time_priors(peak_times, min_times, simple = True)
+    elif N_models > 1:
+        peak_time_priors = return_flare_time_priors(peak_times, min_times, simple = False)
     log_Z0 = 0
     log_Z1 = 0
     log_Z2 = 0
@@ -265,7 +277,7 @@ def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spli
         ## Determine Bayes Factor for baseline model
         if idx == 0:
             construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
-                                 peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors)
+                                 peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors, amp_guess=amp_guess)
             construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num, ns_tol=0.1, cores=NS_CPUS)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             allesfitter.ns_fit(working_dir)
@@ -274,7 +286,7 @@ def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spli
         ## Determine Bayes Factor for N=1 model
         if idx == 1:
             construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
-                                 peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors)
+                                 peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors, amp_guess=amp_guess)
             construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num, ns_tol=0.1, cores=NS_CPUS)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             allesfitter.ns_fit(working_dir)
@@ -344,7 +356,7 @@ def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spli
 
 ### Constructing parameter and settings files for allesfitter
 def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_priors = None, baseline = 'hybrid_spline', 
-                         model = 'flare', N=1, name = 'Flare', custom_priors = False, priors = None):
+                         model = 'flare', N=1, name = 'Flare', custom_priors = False, priors = None, amp_guess = None):
     if len(peak_time_best_guess) > 3 and N == 3:
         peak_time_best_guess = peak_time_best_guess[:3]
         peak_time_priors = peak_time_priors[:3]
@@ -353,23 +365,23 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
         if model == 'flare':
             if N == 0:
                 param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
-                best_guess = [-0.02, 0.01, 0.1]
-                priors = [f'uniform -0.05 {peak_time_priors[0][1]}', 'uniform 0 0.1', 'uniform 0 3']
+                best_guess = [0, 0.01, amp_guess]
+                priors = [f'uniform -0.02 {peak_time_priors[0][1]}', 'uniform 0 0.1', f'uniform {amp_guess*1/2} {amp_guess*2}']
                 labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
                 units = ['days', 'days', 'rel. flux']
             if N == 1:
                 param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
-                best_guess = [peak_time_best_guess[0], 0.01, 0.1]
-                priors = [f'uniform -0.01 {peak_time_priors[0][1]}', 'uniform 0 0.1', 'uniform 0 3']
+                best_guess = [0, 0.01, amp_guess]
+                priors = [f'uniform -0.002 0.002', 'uniform 0 0.1', f'uniform {amp_guess*0.99} {amp_guess*2}']
                 labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
                 units = ['days', 'days', 'rel. flux']
             elif N == 2:
                 param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1',
                             'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2']
                 try:
-                    best_guess = [peak_time_best_guess[0], 0.01, 0.1, peak_time_best_guess[1], 0.01, 0.1]
-                    priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.1', 'uniform 0 3', 
-                                f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.1', 'uniform 0 3']
+                    best_guess = [peak_time_best_guess[0], 0.01, amp_guess, peak_time_best_guess[1], 0.01, amp_guess]
+                    priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.1', f'uniform 0 {amp_guess*2}', 
+                                f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.1', f'uniform 0 {amp_guess*2}']
                     labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
                                 'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
                     units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
@@ -396,8 +408,8 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
         if baseline == 'sample_GP_Matern32':
             param_names += [f'ln_err_flux_{name}', f'baseline_gp_offset_flux_{name}', f'baseline_gp_matern32_lnsigma_flux_{name}', 
                             f'baseline_gp_matern32_lnrho_flux_{name}']
-            best_guess += [-7,0,-5, 0]
-            priors += ['uniform -10 -2', 'uniform -0.02 0.02', 'uniform -15 0', 'uniform 0 15']
+            best_guess += [-7,0,-8, -4]
+            priors += ['uniform -10 -2', 'uniform -0.02 0.02', 'uniform -11.5 -4.6', 'uniform -6 -3']
             labels += [f'ln_err_flux_{name}', rf'GP_Matern32_Baseline_{name}', rf'GP_Matern32_ln$sigma$_{name}', 
                     rf'GP_Matern32_ln$rho$_{name}']
             units += ['rel. flux', 'rel. flux', '', '']
