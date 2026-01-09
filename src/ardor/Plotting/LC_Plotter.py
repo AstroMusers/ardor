@@ -4,214 +4,198 @@ Created on Wed May 29 16:08:22 2024
 
 @author: Nate Whitsett
 """
-
-from ardor.Flares.Flare import tier0
-from matplotlib import pyplot as plt
-from matplotlib import cm
-import numpy as np
-import pandas as pd
+#%%
 import os
+from matplotlib import pyplot as plt
 from matplotlib import font_manager
-from matplotlib.font_manager import FontProperties
-from matplotlib import rcParams
-from matplotlib.colors import Normalize
-for fontpath in font_manager.findSystemFonts(fontpaths=None, fontext='ttf'):
-    if 'lmroman10-regular'.lower() in fontpath.lower():
-        path = fontpath
-        print(path)
-font = FontProperties(fname=path)
-font_label = FontProperties(fname=path)
-font_small = FontProperties(fname=path)
-rcParams["mathtext.fontset"] = "cm"
-targets = pd.read_csv("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/Stat_Tests/Exo_VM.csv")
-targets_TOI = pd.read_csv("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/Stat_Tests/TOI_VM.csv")
-flares = pd.read_csv("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/All_Exoplanet_MCMC_Flares.csv")
-flares_TOI = pd.read_csv("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/All_TOI_MCMC_Flares_News.csv")
-directory = os.listdir('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/TOIs')
-escr_str = 'Trans'
-targets.sort_values(by='TS_' + escr_str, inplace=True, ascending = True)
-targets_TOI.sort_values(by='TS_TOI', inplace=True, ascending = True)
-hosts = targets["Host_ID_" + escr_str].tolist()
-hosts_TOI = targets_TOI["Host_ID"].tolist()
-shift = 0
-shift2 = 0
-fig, ax = plt.subplots()
-fig.set_size_inches(7.5, 10.5)
-ax.set_xlabel('BJD - 2450000', font=font, fontsize = 12)
-ax.get_yaxis().set_ticks([])
-ax.set_ylabel('Relative Flux', font=font, fontsize = 12)
-min_time = 2000
-max_time = 0
-c_index = 0
-counter2 = 3
-counter3 = 3
-num = 6
-count = 0
-norm = Normalize(vmin=0.5, vmax=1)
-cmap = 'plasma'
-m = cm.ScalarMappable(norm=norm, cmap=cmap)
+import numpy as np
+from ardor.Flares.Flare import tier0, tier1, tier2
+import pandas as pd
+# Configure Latin Modern Roman font
+font_path = '/ugrad/whitsett.n/fonts/latin-modern-roman/lmroman10-regular.otf'
+font_manager.fontManager.addfont(font_path)
+plt.rcParams['font.family'] = 'Latin Modern Roman'
 
-
-
-
-
-
-
-
-
-idx = 14
-
-
-#################### HOST LOOP ###############################################
-# for index, star in enumerate(hosts):
-#     counter = 1
-#     star = str(star)
-#     if star == 'nan':
-#         continue
-#     stars = star.replace(' ', '')
-#     period = np.array(flares.loc[(flares['Host_ID'] == stars), 'Period'])[0]
-#     periastron_epoch = np.array(flares.loc[flares['Host_ID'] == stars, 'Periastron_Epoch'])[0]
-#     flare_epochs = np.array(flares.loc[flares['Host_ID'] == stars, 'Flare_Epoch_TESS'])
-#     peri_bool = targets.iloc[index][12+idx]
-#     dlogZ = targets.iloc[index][13+idx]
-#     KS = targets.iloc[index][2+idx]
-#     KU = targets.iloc[index][1+idx]
-#     AD = targets.iloc[index][3+idx]
-#     TS = targets.iloc[index][8+idx]
-#     K = [KS, KU, AD]
-#     K_val = np.argmin(np.array(K))
-#     K_str = ['KS', 'KU', 'AD']
-#     letter = targets.iloc[index][10+idx]
-#     if (K[K_val] < 5e-2 and dlogZ > 5 and len(flare_epochs) >= 5 and TS > 2) or (TS>3.5):
-#         if peri_bool == 'Trans':
-#             flare_epochs = np.array(flares.loc[flares['Host_ID'] == stars, 'Flare_Epoch_TESS'])
-#             flare_phases = np.array(flares.loc[flares['Host_ID'] == stars, 'Transit_Phase'])
-#         elif peri_bool == 'Trans':
-#             continue
-#         files = os.listdir("C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/TESS_Data/" + str(stars))
-#         time = np.linspace(1250, 4000, num=100000)
-#         phases = np.mod((np.linspace(2457000 + 1250, 2457000 + 4000, num=100000) - (periastron_epoch + period/2)), period)/period
-#         check = 0        
-#         for data in files:
-#             try:
-#                 data_dir = "C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/Exoplanet_Hosts/TESS_Data/" + str(stars) + '/' + str(data)
-#                 lc = tier0(data_dir)
-#                 if np.min(time) < min_time:
-#                     min_time = np.min(time)
-#                 if np.max(time) > max_time:
-#                     max_time = np.max(time)
-#                 ax.scatter(lc.time, (((0.04)*(lc.detrended_flux-np.min(lc.detrended_flux))/(np.max(lc.detrended_flux)-np.min(lc.detrended_flux))) + shift+.955), s=0.5, c = 'black')
-#                 print("Cooking...")
-#             except:
-#                 continue
-#         ax.hlines(1 + shift, xmin =1250, xmax=4500, color = 'black')
-        
-#         for index, epochs in enumerate(flare_epochs):
-#             # if (flare_phases[index] < peri_upper + 0.5 and flare_phases[index] > peri_lower + 0.5) or (flare_phases[index] < 0.6 and flare_phases[index] < 0.4):
-#             #     ax.vlines(epochs, colors = 'red', ymin=(0.95 + shift), ymax = (1 + shift), alpha=0.75, linestyle='--')
-#             ax.vlines(epochs, colors = 'blue', ymin=(0.95 + shift), ymax = (1 + shift), alpha=0.75, linestyle='--')
-
-#         # ax.text(3500, .9625 + shift,str(proper[index]) +'\n' + str(len(flare_epochs)) +' Flares' + '\n' + 'KU: ' + str("{:.2E}".format(round(KU, 3))) + ' KS: ' + str("{:.2E}".format(round(KS, 4))), font=font,fontsize = 12)
-#         if star == 'TOI-1062':
-#             ax.text(3600, .956 + shift,str(star) + ' b' +'\n$N_{flare} = ' + str(len(flare_epochs)) + '$\n$p_{' + K_str[K_val] + '}:\,' + str(round(K[K_val],6)) + '$\n' + "$\sqrt{TS}=$" + str(round(TS,1)) , font=font,fontsize =10, horizontalalignment='left')
-#         else:
-#             ax.text(3625, .956 + shift,str(star) + ' '+str(letter) +'\n$N_{flare} = ' + str(len(flare_epochs)) + '$\n$p_{' + K_str[K_val] + '}:\,' + str(round(K[K_val], 3)) + '$\n' + "$\sqrt{TS}=$" + str(round(TS,1)) , font=font,fontsize =12, horizontalalignment='left')
-        
-#         counter3 -= 1
-#         shift += 0.05
-#         c_index += 1
-#         shift2 += 1/float(num)
-#     counter += 1
-
-# ax.hlines(1, 1500, 1500, linestyle = '--', color = 'blue', label = 'Flares')
-# # ax.hlines(1, 1500, 1500, linestyle = '--', color = 'red', label = 'Flares Near Periastron')
-# ax.set_xticklabels(ax.get_xticklabels(), font=font,fontsize = 11)
-# ax.set_ylim(0.95, 0.95+ shift)
-# ax.set_xlim(1250, 4150)
-# ax.legend(loc = 'lower left', prop={"family":"serif", "size":11})
-# plt.savefig('CandidateLCs_' + escr_str +'.png', dpi=300, bbox_inches='tight' )    
-# plt.show()
-
-
-################ TOI LOOP ###################################
-for index, star in enumerate(hosts_TOI):
-    if star in hosts_TOI:
-        # try:
-        counter = 1
-        stars = star
-        period = np.array(flares_TOI.loc[flares_TOI['Host_ID'] == float(stars), 'Period'])[0]
-        # periastron_epoch = np.array(flares_TOI.loc[flares_TOI['Host_ID'] == stars, 'Transit_Epoch'])[0]
-        flare_epochs = np.array(flares_TOI.loc[flares_TOI['Host_ID'] == float(stars), 'Epoch'])
-        # peri_bool = np.array(targets.loc[targets_TOI['Host_ID'] == float(stars), 'Epoch_Used'])
-        peri = False
-        # peri_upper = np.array(flares.loc[flares_TOI['Host_ID'] == stars, 'Periastron_Upper'])
-        # peri_upper = peri_upper[0]
-        # peri_lower = np.array(flares.loc[flares_TOI['Host_ID'] == stars, 'Periastron_Lower'])
-        # peri_lower = peri_lower[0]
-        dlogZ = np.array(targets_TOI.loc[targets_TOI['Host_ID'] == float(stars), 'dlogZ_TOI'])
-        dlogZ = dlogZ.item()
-        KS = np.array(targets_TOI.loc[targets_TOI['Host_ID'] == float(stars), 'p_KS_TOI'])[0]
-        KS = KS.item()
-        KU = np.array(targets_TOI.loc[targets_TOI['Host_ID'] == float(stars), 'p_KU_TOI'])[0]
-        KU = KU.item()
-        AD = np.array(targets_TOI.loc[targets_TOI['Host_ID'] == float(stars), 'p_AD_TOI'])[0]
-        AD = AD.item()
-        TS = np.array(targets_TOI.loc[targets_TOI['Host_ID'] == float(stars), 'TS_TOI'])[0]
-        K = [KS, KU, AD]
-        K_val = np.argmin(np.array(K))
-        K_str = ['KS', 'KU', 'AD']
-        
-        if (K[K_val] < 2.5e-2 and dlogZ > 5 and TS > 2.5 and len(flare_epochs) >= 5 ):
-            if peri == False:
-                try:
-                    flare_epochs2 = np.array(flares_TOI.loc[flares_TOI['Host_ID'] == int(stars), 'Epoch'])
-                except:
-                    flare_epochs2 = np.array(flares_TOI.loc[flares_TOI['Host_ID'] == stars, 'Epoch'])
-                flare_epochs = np.array(flares_TOI.loc[flares_TOI['Host_ID'] == stars, 'Epoch_TESS'])
-                flare_phases = np.array(flares_TOI.loc[flares_TOI['Host_ID'] == stars, 'Transit_Phases'])
-            elif peri == False:
-                continue
-            files = os.listdir('C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/TOIs/' + str(stars))
-            time = np.linspace(1250, 4000, num=100000)
-            # phases = np.mod((np.linspace(2457000 + 1250, 2457000 + 4000, num=100000) - (periastron_epoch + period/2)), period)/period
-            check = 0        
-            for data in files:
-                try:
-                    if data.endswith('a_fast-lc.fits') == True:
-                        continue
-                    data_dir = 'C:/Users/Nate Whitsett/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Flare_Catalogs/All TOIs/TOIs/' + str(stars) + '/' + str(data)
-                    lc = tier0(data_dir)
-                    if np.min(time) < min_time:
-                        min_time = np.min(time)
-                    if np.max(time) > max_time:
-                        max_time = np.max(time)
-                    ax.scatter(lc.time, (((0.04)*(lc.detrended_flux-np.min(lc.detrended_flux))/(np.max(lc.detrended_flux)-np.min(lc.detrended_flux))) + shift+.955), s=0.5, c = 'black')
-                    print('Cooking...')
-                except:
-                    continue
-            ax.hlines(1 + shift, xmin =1250, xmax=4500, color = 'black')
-            
-            for index, epochs in enumerate(flare_epochs):
-                # if (flare_phases[index] < peri_upper + 0.5 and flare_phases[index] > peri_lower + 0.5) or (flare_phases[index] < 0.6 and flare_phases[index] < 0.4):
-                #     ax.vlines(epochs, colors = 'red', ymin=(0.95 + shift), ymax = (1 + shift), alpha=0.75, linestyle='--')
-                ax.vlines(epochs, colors = 'blue', ymin=(0.95 + shift), ymax = (1 + shift), alpha=0.75, linestyle='--')
+def plot_time_slices(time, flux, indices, durations, window_size=25, max_subplots=None, 
+                    figsize=(7, 5), highlight_color='red', highlight_marker='o', 
+                    normal_color='blue', normal_marker='.', show_subplot_titles=False):
+    """
+    Plot multiple time slices of light curve data with highlighted regions.
     
-            # ax.text(3500, .9625 + shift,str(proper[index]) +'\n' + str(len(flare_epochs)) +' Flares' + '\n' + 'KU: ' + str("{:.2E}".format(round(KU, 3))) + ' KS: ' + str("{:.2E}".format(round(KS, 4))), font=font,fontsize = 12)
-            ax.text(3550, .958 + shift,str(star) +'\n$N_{flare} = ' + str(len(flare_epochs)) + '$\n$p_{' + K_str[K_val] + '}:\,' + str(round(K[K_val], 3)) + '$\n' + "$\sqrt{TS}=$" + str(round(TS,1)) , font=font,fontsize = 12, horizontalalignment='left')
-            
-            counter3 -= 1
-            shift += 0.05
-            c_index += 1
-            shift2 += 1/float(num)
-        counter += 1
-        # except:
-        #     continue
+    Parameters:
+    -----------
+    time : array-like
+        Time array (x-axis data)
+    flux : array-like
+        Flux array (y-axis data)
+    indices : array-like
+        List of indices along the time array to center slices on
+    durations : array-like
+        Array of durations for highlighting (same length as indices)
+    window_size : int, optional
+        Total number of points to show around each center point (default: 25)
+    max_subplots : int, optional
+        Maximum number of subplots to create. If None, uses all indices
+    figsize : tuple, optional
+        Figure size (width, height) in inches
+    highlight_color : str, optional
+        Color for highlighted data points
+    highlight_marker : str, optional
+        Marker style for highlighted data points
+    normal_color : str, optional
+        Color for normal data points
+    normal_marker : str, optional
+        Marker style for normal data points
+    show_subplot_titles : bool, optional
+        Whether to show individual subplot titles (default: False)
+    
+    Returns:
+    --------
+    fig : matplotlib.figure.Figure
+        The created figure object
+    axes : array
+        Array of subplot axes
+    """
+    
+    # Convert inputs to numpy arrays
+    time = np.array(time)
+    flux = np.array(flux)
+    indices = np.array(indices)
+    durations = np.array(durations)
+    
+    # Validate input lengths
+    if len(indices) != len(durations):
+        raise ValueError("indices and durations arrays must have the same length")
+    
+    # Determine number of subplots
+    if max_subplots is None:
+        n_subplots = len(indices)
+    else:
+        n_subplots = min(max_subplots, len(indices))
+    
+    # Calculate subplot grid dimensions
+    n_cols = int(np.ceil(np.sqrt(n_subplots)))
+    n_rows = int(np.ceil(n_subplots / n_cols))
+    
+    # Create figure and subplots
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
+    if n_subplots == 1:
+        axes = [axes]
+    elif n_rows == 1 or n_cols == 1:
+        axes = axes.flatten()
+    else:
+        axes = axes.flatten()
+    
+    half_window = window_size // 2
+    
+    for i in range(n_subplots):
+        ax = axes[i]
+        center_idx = indices[i]
+        duration = durations[i]
+        
+        # Calculate slice boundaries
+        start_idx = max(0, center_idx - half_window)
+        end_idx = min(len(time), center_idx + half_window + 1)
+        
+        # Extract slice data
+        time_slice = time[start_idx:end_idx]
+        flux_slice = flux[start_idx:end_idx]
+        
+        # Plot normal data points
+        ax.plot(time_slice, flux_slice, color=normal_color, marker=normal_marker, 
+                linestyle='-', markersize=4, alpha=0.7, label='Data')
+        
+        # Determine highlight region based on number of data points
+        center_time = time[center_idx]
+        highlight_start_idx = center_idx
+        highlight_end_idx = min(len(time), center_idx + int(duration))
+        
+        # Convert global indices to slice-relative indices
+        slice_start_in_global = start_idx
+        slice_end_in_global = end_idx
+        
+        # Find which part of the highlight region overlaps with this slice
+        highlight_start_in_slice = max(0, highlight_start_idx - slice_start_in_global)
+        highlight_end_in_slice = min(len(time_slice), highlight_end_idx - slice_start_in_global)
+        
+        # Create highlight mask for the slice
+        if highlight_start_in_slice < highlight_end_in_slice and highlight_start_in_slice >= 0:
+            highlight_mask = np.zeros(len(time_slice), dtype=bool)
+            highlight_mask[highlight_start_in_slice:highlight_end_in_slice] = True
+        else:
+            highlight_mask = np.zeros(len(time_slice), dtype=bool)
+        
+        if np.any(highlight_mask):
+            ax.plot(time_slice[highlight_mask], flux_slice[highlight_mask], 
+                   color=highlight_color, marker=highlight_marker, linestyle='None',
+                   markersize=6, label='Highlighted region')
+        
+        # Highlight the center point specifically
+        center_time_in_slice = center_time
+        if center_time_in_slice in time_slice:
+            center_flux = flux[center_idx]
+            ax.plot(center_time_in_slice, center_flux, color='orange', marker='*', 
+                   markersize=10, label='Center point')
+        
+        # Formatting
+        if show_subplot_titles:
+            ax.set_title(f'Slice {i+1} (Center: t={center_time:.3f})')
+        ax.grid(True, alpha=0.3)
+        
+        # Add legend only to first subplot to avoid clutter
+        if i == 0:
+            ax.legend(fontsize=8)
+        
+        # Set smaller tick label font sizes
+        ax.tick_params(labelsize=8)
+    
+    # Hide unused subplots
+    for j in range(n_subplots, len(axes)):
+        axes[j].set_visible(False)
+    
+    # Add unified, centered, and larger axis labels with better positioning
+    fig.supxlabel('Time (BJD)', fontsize=12, y=0.01)
+    fig.supylabel('Normalized Flux', fontsize=16, x=0.01)
+    
+    # Minimize whitespace
+    plt.tight_layout()
+    plt.subplots_adjust(left=0.08, bottom=0.08, right=0.98, top=0.95, hspace=0.25, wspace=0.20)
+    
+    return fig, axes[:n_subplots]
 
-ax.hlines(1, 1500, 1500, linestyle = '--', color = 'blue', label = 'Flares')
-# ax.hlines(1, 1500, 1500, linestyle = '--', color = 'red', label = 'Flares Near Periastron')
-ax.set_xticklabels(ax.get_xticklabels(), font=font,fontsize = 11)
-ax.set_ylim(0.95, 0.95+ shift)
-ax.set_xlim(1250, 4010)
-ax.legend(loc = 'lower left', prop={"family":"serif", "size":10})
-plt.savefig('CandidateLCs_TOI.png', dpi=300, bbox_inches='tight' )    
+def Epoch_Extractor(host_name, csv_path):
+    """
+    Extract epochs from a CSV file for a given host name.
+    
+    Parameters:
+    -----------
+    host_name : str
+        The name of the host to extract epochs for.
+    csv_path : str
+        Path to the CSV file containing epoch data.
+    
+    Returns:
+    --------
+    epochs : list
+        List of epochs corresponding to the host name.
+    """
+    df = pd.read_csv(csv_path)
+    host_data = df[df['Host_ID'] == host_name]
+    epochs = host_data['Flare_Epoch'].tolist()
+    return epochs
+csv = '/ugrad/whitsett.n/Induced_Flares/Flare_Data/Tier_3/Grand_Lists/All_Exoplanet_MCMC_Flares.csv'
+epochs = Epoch_Extractor('TOI-1062', csv)
+print(epochs)
+files = os.listdir('/data2/whitsett.n/TESS/Hosts/TOI-1062')
+print(len(files))
+data = os.path.join('/data2/whitsett.n/TESS/Hosts/TOI-1062', files[8])
+lc = tier0(data)
+
+# Convert astropy MaskedQuantity to numpy array for compatibility
+detrended_flux_array = np.array(lc.detrended_flux.value)
+time_array = np.array(lc.time)
+
+flares = tier1(time_array, detrended_flux_array, sigma=3)
+fig, axes = plot_time_slices(lc.time, lc.flux, flares.index, flares.length, window_size=100, max_subplots=10)
 plt.show()
+# %%

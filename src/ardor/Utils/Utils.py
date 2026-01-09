@@ -11,6 +11,7 @@ import math
 import os
 from astropy.table import Table
 from astropy.io import ascii
+from ardor.Data_Query.Data_Query import Query_Transit_Solution, Query_Host_Params_TOI
 
 warnings.filterwarnings("ignore")
 def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[], output_dir = None, specifier_column = None):
@@ -322,3 +323,34 @@ def copy_output(work_dir, files_to_copy, destination_dir):
             os.system(f'cp {source_path} {dest_path}')
         else:
             print(f'File {file_name} does not exist in {work_dir}. Skipping.')
+
+def return_phases(catalog, host_name, host_col_header = 'Host_ID', time_col_header = 'Flare_Epoch_BJD'):
+    '''
+    Return phases of flares for a given host.
+
+    Parameters
+    ----------
+    catalog : pd.DataFrame
+        Dataframe containing flare catalog.
+    host_name : str
+        Name of the host to filter by, as it is in the Exoplanet Archive.
+    host_col_header : str, optional
+        Column header for host names. The default is 'Host_ID'.
+    time_col_header : str, optional
+        Column header for flare times. The default is 'Flare_Epoch_BJD'.
+
+    Returns
+    -------
+    phases : list
+        List of phases for the flares of the specified host.
+
+    '''
+    
+    host_data = catalog.loc[catalog[host_col_header] == host_name]
+    times = host_data[time_col_header].to_numpy()
+    period = host_data['Orbital_Period_Days'].to_numpy()[0]
+    phases = []
+    for time in times:
+        phase = (time % period) / period
+        phases.append(phase)
+    return phases

@@ -16,21 +16,6 @@ import ardor.Statistical_Tests.MLE as MLE
 import matplotlib.cm as cm
 import matplotlib.colors as colors
 import os
-# for fontpath in font_manager.findSystemFonts():
-#     if 'lmroman10-regular' in fontpath.lower():
-#         path = fontpath
-#     if 'lmroman10-italic' in fontpath.lower():
-#         italicpath = fontpath
-
-# Register and get name
-# font_manager.fontManager.addfont(path)
-# font_manager.fontManager.addfont(italicpath)
-
-# font = FontProperties(fname=path)
-# font_name = font.get_name()
-
-# rcParams["font.family"] = font_name
-# rcParams["mathtext.fontset"] = "cm"
 
 def color_map(data, c='viridis'):
     # Define min and max for normalization

@@ -22,7 +22,7 @@ import lightkurve as lk
 import collections as c
 from matplotlib import pyplot as plt
 import re
-
+from pycheops import Dataset
 ## Mathematical Functions and Computation
 def linear(x, a, b):
     '''
@@ -441,7 +441,7 @@ def TESS_FITS_csv(input_file, csv_directory, csv_name=None):
     grand_list = pd.DataFrame({'time': time, 'Normalized_Flux': data, 'error': error, 'trend': trend.flux})
     grand_list.to_csv(directory, index=False)
 
-def TESS_data_extract(fits_lc_file, PDCSAP_ERR=True):
+def TESS_data_extract(fits_lc_file, PDCSAP_ERR=True, inst = 'TESS'):
     '''
     Extracts the time and PDCSAP_FLUX from a TESS light curve .fits file.
     Parameters
@@ -457,19 +457,39 @@ def TESS_data_extract(fits_lc_file, PDCSAP_ERR=True):
         Returns named tuple that has attributes flux, time, and error.
 
     '''
-    lc = lk.read(fits_lc_file, flux_column='pdcsap_flux').remove_nans()
-    lc = lc[lc.quality == 0]
-    flux = lc.flux/np.median(lc.flux)
-    error = lc.flux_err/np.median(lc.flux)
-    if PDCSAP_ERR == False:
-        LightCurve = c.namedtuple('LightCurve', ['time', 'flux'])
-        lc = LightCurve(lc.time + 2457000, flux)
-        return lc
-    if  PDCSAP_ERR == True:
-        LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'error'])
-        lc = LightCurve(lc.time + 2457000, flux, error)
-        return lc
-    
+    if inst == 'TESS':
+        lc = lk.read(fits_lc_file, flux_column='pdcsap_flux').remove_nans()
+        lc = lc[lc.quality == 0]
+        flux = lc.flux/np.median(lc.flux)
+        error = lc.flux_err/np.median(lc.flux)
+        if PDCSAP_ERR == False:
+            LightCurve = c.namedtuple('LightCurve', ['time', 'flux'])
+            lc = LightCurve(lc.time + 2457000, flux)
+            return lc
+        if  PDCSAP_ERR == True:
+            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'error'])
+            lc = LightCurve(lc.time + 2457000, flux, error)
+            return lc
+    if inst == 'CHEOPS':
+        with fits.open(fits_lc_file) as hdul:
+            data = {}
+            # Extract primary header information
+            primary_header = hdul[0].header
+            data['observation_date'] = primary_header.get('DATE-OBS')
+            data['target_name'] = primary_header.get('TARGET')
+            
+            # Extract data from the first extension
+            ext1_data = hdul[1].data
+            time = ext1_data['MJD_TIME']
+            flux = ext1_data['FLUX']
+            error = ext1_data['FLUXERR']
+            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'error'])
+            lc = LightCurve(time, flux, error)
+            return lc
+
+
+
+
 ##Light Curve helper functions
 
 def phase_folder(time, period, epoch):
@@ -522,14 +542,14 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
     shift = 0
     for index, values in enumerate(mask_data):
         if index < 100:
-            sigma2 = np.std(mask_data[0:100])
-            median = np.median(mask_data[0:100])
+            sigma2 = np.ma.std(mask_data[0:100])
+            median = np.ma.median(mask_data[0:100])
         if index > (len(mask_data) - 100):
-            sigma2 = np.std(mask_data[len(mask_data)-100:])
-            median = np.median(mask_data[len(mask_data)-100:])       
+            sigma2 = np.ma.std(mask_data[len(mask_data)-100:])
+            median = np.ma.median(mask_data[len(mask_data)-100:])       
         elif shift == 100:
-            sigma2 = np.std(mask_data[begin:end])
-            median = np.median(mask_data[begin:end])
+            sigma2 = np.ma.std(mask_data[begin:end])
+            median = np.ma.median(mask_data[begin:end])
             shift = 0
             begin += 100
             end += 100
@@ -794,7 +814,7 @@ def lk_detrend(data, time, scale=401, return_trend = False):
 
 ## Ardor Tiers
 def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
-          host_name=None, manual_transit_solution = None, TOI_Bool = False):
+          host_name=None, manual_transit_solution = None, TOI_Bool = False, inst = 'TESS'):
     """
     Tier 0 of ardor. This function accepts a TESS '...lc.fits' file, and returns
     a named tuple which contains a NAN free, detrended and normalized 
@@ -831,78 +851,90 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False,
             - trend: The trend removed in the detrending step. (array)
     """
     # Extract sector number from filename
-    sector_match = re.search(r'-s0*(\d+)-', TESS_fits_file)
-    if sector_match:
-        sector = int(sector_match.group(1))
-    else:
-        sector = None
-    
-    if deep_transit == False:
-        if TESS_fits_file.endswith('a_fast-lc.fits') == True:
-            fast = True
-            cadence = (1/3)
-        elif TESS_fits_file.endswith('a_fast-lc.fits') == False:  
-            fast = False
-            cadence = 2
-        if injection == False:
-            time, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
-            lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
-            detrend_flux, trend = lk_detrend(lc.flux, lc.time.value, scale=scale, return_trend= True)
-            observation_time = cadence*len(lc.time.value)
-            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
-            lc = LightCurve(lc.time.value, lc.flux, detrend_flux, lc.flux_err, fast, observation_time, trend.flux, sector)
-        elif injection == True:
-            lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
-            detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
-            observation_time = cadence*len(lc.time)
-            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
-            lc = LightCurve(lc.time.value, lc.flux, detrend_flux, lc.error, fast, observation_time, trend.flux, sector)
-    elif deep_transit == True:
-        if host_name is None:
-            raise ValueError("host_name must be provided when deep_transit is True.")
-        if TESS_fits_file.endswith('a_fast-lc.fits') == True:
-            fast = True
-            cadence = (1/3)
-        elif TESS_fits_file.endswith('a_fast-lc.fits') == False:  
-            fast = False
-            cadence = 2
-        if injection == False:
-            time, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
-            lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
-            observation_time = cadence*len(time)
-            if manual_transit_solution is not None and host_name is not None and TOI_Bool == False:
-                period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
-            elif TOI_Bool == True:
-                period, epoch, duration = Query_Transit_Solution_TOI(int(host_name))
-            else:
-                period, epoch, duration = manual_transit_solution
-            mask = lc.create_transit_mask(period, epoch, duration/24)
-            transits = lc[mask]
-            transit_segments = extract_segments(transits)
-            detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
-            # Reconstruct the full light curve with detrended transits
-            reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
-            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
-            lc = LightCurve(reconstructed_lc.time.value, lc.flux, reconstructed_lc.flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux, sector)
-        elif injection == True:
-            lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
-            detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
-            observation_time = cadence*len(lc.time)
-            if manual_transit_solution is not None and host_name is not None and TOI_Bool == False:
-                period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
-            elif manual_transit_solution is not None and host_name is not None and TOI_Bool == True:
-                period, epoch, duration = Query_Transit_Solution_TOI(int(host_name))
-            else:
-                period, epoch, duration = manual_transit_solution
-            mask = lc.create_transit_mask(period, epoch, duration/24)
-            transits = lc[mask]
-            transit_segments = extract_segments(transits)
-            detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
-            # Reconstruct the full light curve with detrended transits
-            reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
-            LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
-            lc = LightCurve(reconstructed_lc.time, reconstructed_lc.flux, reconstructed_lc.detrended_flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux, sector)
+    if inst == 'TESS':
+        sector_match = re.search(r'-s0*(\d+)-', TESS_fits_file)
+        if sector_match:
+            sector = int(sector_match.group(1))
+        else:
+            sector = None
+        
+        if deep_transit == False:
+            if TESS_fits_file.endswith('a_fast-lc.fits') == True:
+                fast = True
+                cadence = (1/3)
+            elif TESS_fits_file.endswith('a_fast-lc.fits') == False:  
+                fast = False
+                cadence = 2
+            if injection == False:
+                time, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
+                lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
+                detrend_flux, trend = lk_detrend(lc.flux, lc.time.value, scale=scale, return_trend= True)
+                observation_time = cadence*len(lc.time.value)
+                LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
+                lc = LightCurve(lc.time.value, lc.flux, detrend_flux, lc.flux_err, fast, observation_time, trend.flux, sector)
+            elif injection == True:
+                lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
+                detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
+                observation_time = cadence*len(lc.time)
+                LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
+                lc = LightCurve(lc.time.value, lc.flux, detrend_flux, lc.error, fast, observation_time, trend.flux, sector)
+        elif deep_transit == True:
+            if host_name is None:
+                raise ValueError("host_name must be provided when deep_transit is True.")
+            if TESS_fits_file.endswith('a_fast-lc.fits') == True:
+                fast = True
+                cadence = (1/3)
+            elif TESS_fits_file.endswith('a_fast-lc.fits') == False:  
+                fast = False
+                cadence = 2
+            if injection == False:
+                time, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
+                lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
+                observation_time = cadence*len(time)
+                if manual_transit_solution is not None and host_name is not None and TOI_Bool == False:
+                    period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
+                elif TOI_Bool == True:
+                    period, epoch, duration = Query_Transit_Solution_TOI(int(host_name))
+                else:
+                    period, epoch, duration = manual_transit_solution
+                mask = lc.create_transit_mask(period, epoch, duration/24)
+                transits = lc[mask]
+                transit_segments = extract_segments(transits)
+                detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
+                # Reconstruct the full light curve with detrended transits
+                reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
+                LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
+                lc = LightCurve(reconstructed_lc.time.value, lc.flux, reconstructed_lc.flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux, sector)
+            elif injection == True:
+                lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
+                detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
+                observation_time = cadence*len(lc.time)
+                if manual_transit_solution is not None and host_name is not None and TOI_Bool == False:
+                    period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
+                elif manual_transit_solution is not None and host_name is not None and TOI_Bool == True:
+                    period, epoch, duration = Query_Transit_Solution_TOI(int(host_name))
+                else:
+                    period, epoch, duration = manual_transit_solution
+                mask = lc.create_transit_mask(period, epoch, duration/24)
+                transits = lc[mask]
+                transit_segments = extract_segments(transits)
+                detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
+                # Reconstruct the full light curve with detrended transits
+                reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
+                LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
+                lc = LightCurve(reconstructed_lc.time, reconstructed_lc.flux, reconstructed_lc.detrended_flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux, sector)
+        return lc
+
+def tier0_CHEOPS(time, flux, error, scale = 401, detrend = True):
+    if detrend == True:
+        detrend_flux, trend = lk_detrend(flux, time, scale=scale, return_trend= True)
+    elif detrend == False:
+        detrend_flux = flux
+        trend = np.zeros(len(flux))
+    LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
+    lc = LightCurve(time, flux, detrend_flux, error, False, len(time), trend, 0)
     return lc
+    
 
 def tier1(time, detrended_flux, sigma, fast=False, injection = False, in_transit = False):
     '''
@@ -976,7 +1008,7 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
     '''
     time = lc.time
     flux = np.array(lc.detrended_flux)
-    pdcsap_error = lc.error.value
+    pdcsap_error = lc.error
     # Initialize result containers
     results = {
         'TOI_ID': [], 'flare_number': [], 'peak_time': [], 'peak_time_BJD': [],
@@ -991,7 +1023,7 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
     # Calculate median cadence for gap detection
     time_diffs = np.diff(time)
     median_cadence = np.median(time_diffs)
-    gap_threshold = 5 * median_cadence
+    gap_threshold = 1000 * median_cadence
     
     for index, flare_event in enumerate(flares):
         # Extract flare segment with gap-aware boundaries
@@ -1009,13 +1041,14 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
         new_time = (new_time - norm_time) * 24 * 60  # Convert to minutes
         
         # Fit exponential decay and validate
-        try:
-            chi_squared, popt, r_sq = _fit_flare_decay(
-                new_time, new_data, new_error, event_offset, lengths[index]
-            )
-        except Exception:
-            print('Flare ID Error')
-            continue
+        # try:
+        print(index)
+        chi_squared, popt, r_sq = _fit_flare_decay(
+            new_time, new_data, new_error, event_offset, lengths[index]
+        )
+        # except Exception:
+        #     print('Flare ID Error')
+        #     continue
         
         # Accept flare if it meets quality criteria
         if (chi_squared < chi_square_cutoff and popt[0] < 0) or r_sq > 0.8:
@@ -1098,7 +1131,12 @@ def _fit_flare_decay(time, flux, error, event_idx, flare_length):
     # Log transform for linear fit
     flux_min = np.min(fit_flux) * 0.998
     log_flux = np.log(fit_flux - flux_min)
-    log_error = np.sqrt(fit_error**2 + fit_error[-1]**2) / (fit_flux - flux_min * 0.999)
+    # Handle both pandas Series and numpy arrays
+    if hasattr(fit_error, 'iloc'):
+        last_error = fit_error.iloc[-1]
+    else:
+        last_error = fit_error[-1]
+    log_error = np.sqrt(fit_error**2 + last_error**2) / (fit_flux - flux_min * 0.999)
     
     # Fit linear model to log-transformed data
     popt, _ = curve_fit(linear, fit_time, log_flux, maxfev=5000, 
@@ -1190,7 +1228,7 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_di
     completed = os.listdir(output)
     if len(completed) > 0:
         last_completed = completed[-1]
-        last_completed = last_completed.replace('_ns_corner.pdf', '.csv')
+        last_completed = last_completed.replace('_ns_corner.png', '.csv')
         idx = flare_csvs.index(last_completed)
         flare_csvs = flare_csvs[idx+1:]
     for flares in flare_csvs:
@@ -1227,7 +1265,7 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_di
                                                     R_unc=[star.Radius[1], star.Radius[2]], N=N)
             allesfitter_priors.save_params_to_csv(host_name, flare_number, params, energy=[energy, energy_l, energy_u], dlogZ=dlogZ, output_dir=catalog_dir, cum_obs_time=cum_obs_time, fast=fast, sector=sector)
             allesfitter_priors.copy_output(tier_3_working_dirs[model], ['ns_corner', 'ns_fit', 'logfile'], output)
-            os.rename(os.path.join(output, 'ns_corner.pdf', ), os.path.join(output, f'{flares.replace(".csv", "")}_ns_corner.pdf'))
+            os.rename(os.path.join(output, 'ns_corner.png', ), os.path.join(output, f'{flares.replace(".csv", "")}_ns_corner.png'))
         for dirs in tier_3_working_dirs:
             allesfitter_priors.clear_workingdir(dirs)
 

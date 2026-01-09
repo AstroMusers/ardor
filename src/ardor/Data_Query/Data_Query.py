@@ -12,6 +12,9 @@ import shutil
 import numpy as np
 from collections import namedtuple
 from astroquery.mast import Catalogs
+from ardor.SPI_Forward_Models.Orbit_Model_Library import transit_to_periastron_epoch
+import warnings
+warnings.filterwarnings("ignore")
 def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_list, radius = 0.01):
     '''
     
@@ -347,3 +350,86 @@ def string_checker(identifier):
     if identifier.startswith("61Vir") and ' ' not in identifier:
         identifier = "61 Vir"
     return identifier
+
+def Query_Periastron_Epoch(identifier, table = "ps", compute_epoch = False):
+    """
+    Query the NASA Exoplanet Archive for periastron solution parameters of planets.
+    This function retrieves periastron parameters (orbital period, periastron epoch, and argument of periastron)
+    for planets associated with a given stellar identifier from the NASA Exoplanet Archive.
+    Parameters
+    ----------
+    identifier : str, int, or float
+        The stellar identifier. If numeric (int or float), it is treated as a TIC ID.
+        If string, it is treated as a hostname and searched using a LIKE query.
+    table : str, optional
+        The NASA Exoplanet Archive table to query. Default is "ps".
+        Supported values include "pscomppars" (Planetary Systems Composite Parameters)
+        and "ps" (Planetary Systems). The aggregation method differs by table.
+    compute_epoch : bool, optional
+        If True, compute the periastron epoch from transit mid-time and argument of periastron, if available. Default is False.
+    Returns
+    -------
+    periods : numpy.ndarray
+        Array of orbital periods in days for each planet with transit data.
+    periastron_epochs : numpy.ndarray
+        Array of periastron epochs (BJD) for each planet with transit data.
+    omega_st : numpy.ndarray
+        Array of omega_st for each planet with transit data.
+    pl_letter : numpy.ndarray
+        Array of planet letters for each planet with transit data.
+    Raises
+    ------
+    ValueError
+        If identifier is neither a string nor numeric type.
+    Notes
+    -----
+    - For table='pscomppars', the function returns single values directly from the query.
+    - For table='ps', the function returns the median period and duration, and the maximum
+      transit mid-time from potentially multiple entries per planet.
+    - All returned arrays have the same length, corresponding to the number of transiting
+      planets found.
+    """
+
+
+    if type(identifier) == float or type(identifier) == int:
+        if compute_epoch == False:
+            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper",
+                                        where=f"tic_id='TIC {str(int(identifier))}'")
+        elif compute_epoch == True:
+            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_tranmid",
+                                        where=f"tic_id='TIC {str(int(identifier))}'")
+    elif type(identifier) == str:
+        identifier = string_checker(identifier)
+        if compute_epoch == False:
+            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper",
+                                        where=f"hostname like '{str(identifier)}'")
+        elif compute_epoch == True:
+            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_tranmid",
+                                        where=f"hostname like '{str(identifier)}'")
+    else:
+        raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
+    planets = set(query['pl_letter'])
+    periods = []
+    peri_epochs = []
+    omega_sts = []
+    comp_peri_epochs = []
+    for planet in planets:
+        mask = (query['pl_letter'] == planet)
+        query_planet = query[mask]
+        if table == 'pscomppars':
+            periods.append(float(query_planet['pl_orbper'].value)) 
+            peri_epochs.append(float(query_planet['pl_orbtper'].value))
+            omega_sts.append(float(query_planet['pl_orblper'].value))
+            if compute_epoch == True:
+                comp_peri_epochs.append(transit_to_periastron_epoch(float(query_planet['pl_orbper'].value), float(query_planet['pl_orbeccen'].value), float(query_planet['pl_orblper'].value)))
+            elif compute_epoch == False:
+                comp_peri_epochs.append(np.nan)
+        elif table == 'ps':
+            periods.append(float(np.nanmedian(query_planet['pl_orbper'].value)))
+            peri_epochs.append(float(np.nanmax(query_planet['pl_orbtper'].value))) 
+            omega_sts.append(float(np.nanmedian(query_planet['pl_orblper'].value)))
+            if compute_epoch == False:
+                comp_peri_epochs.append(np.nan)
+            elif compute_epoch == True:
+                comp_peri_epochs.append(transit_to_periastron_epoch(float(np.nanmedian(query_planet['pl_orbper'].value)), float(np.nanmedian(query_planet['pl_orbeccen'].value)), float(np.nanmedian(query_planet['pl_orblper'].value)))+ float(np.nanmax(query_planet['pl_tranmid'].value)))
+    return (np.array(periods), np.array(peri_epochs), np.array(omega_sts), np.array(list(planets)), np.array(list(comp_peri_epochs)))
