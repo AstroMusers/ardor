@@ -16,7 +16,15 @@ import ardor.Statistical_Tests.MLE as MLE
 import matplotlib.cm as cm
 import matplotlib.colors as colors
 import os
+from ardor.Utils.Utils import return_phases
+from ardor.Data_Query.Data_Query import Query_Host_Params, Query_Planet_Parameters
 
+# Configure default font to Latin Modern Roman
+font_path = '/ugrad/whitsett.n/fonts/latin-modern-roman/lmroman10-regular.otf'
+if os.path.exists(font_path):
+    font_manager.fontManager.addfont(font_path)
+    rcParams['font.family'] = 'Latin Modern Roman'
+    rcParams['font.serif'] = ['Latin Modern Roman'] + rcParams['font.serif']
 def color_map(data, c='viridis'):
     # Define min and max for normalization
     min_val = np.min(data)
@@ -144,8 +152,8 @@ def a_from_period(R, period):
 def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, omega_p = 0, title = "Title", star_rad = 1, peri_err = None,
                      star_teff = 4000, transit = False, save_dir = None, alfven=[0.1, 0.025, 0.025], 
                      TOI = False, emax = 0, roche = [], dynamic_lim = False, legend = False,bottom_text_list=None, alfven_bool = None,
-                     color = 'viridis', scale = False):
-    
+                     color = 'viridis', scale = False, scale_length = 0.1):
+    flare_phases = np.array(flare_phases)
     if alfven != None:
         alfven_guess = alfven[0]
         # alfven_upper = alfven[1]
@@ -242,7 +250,12 @@ def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, omega_p = 0, title = "Ti
                            linewidth=0.5)
     if TOI == False:
         ax.plot(phases, orbit, linestyle='-', color='black', linewidth=1.25, label = 'Orbit')
-    ax.set_rlim(0,0.15)
+    
+    # Calculate appropriate plot limits based on orbit size and scale marker
+    max_orbit_radius = np.max(orbit)
+    scale_marker_max = scale_length * 1.41414 if scale else 0
+    plot_max = max(max_orbit_radius * 1.2, scale_marker_max * 1.1)
+    ax.set_rlim(0, plot_max)
     ax.set_yticks([])
     ax.set_yticklabels([])
     ax.set_xticks([])
@@ -256,7 +269,11 @@ def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, omega_p = 0, title = "Ti
     ax.plot(thetas, (PDF/np.max(PDF))*orbit_pos(e,a,loc), linestyle = '-', color='magenta', label = 'VM PDF', linewidth=1)
     plt.fill(thetas, star_rad*np.ones(len(thetas)), zorder=4, c=star_cl, edgecolor='black', linewidth=0.5)
     if scale == True:
-        plt.annotate('0.1 AU', (np.pi, 0.1), (3*np.pi/4,0.141414) 
+        # Calculate scale marker positions based on scale_length
+        scale_r = scale_length
+        scale_end_r = scale_length * 1.41414  # Maintains the same ratio as original (0.141414/0.1)
+        scale_label = f'{scale_length} AU'
+        plt.annotate(scale_label, (np.pi, scale_r), (3*np.pi/4, scale_end_r) 
                      ,arrowprops=dict(facecolor='black', width=4, headlength=0.0000001, headwidth=0.00000001), fontsize=11)
     # ax.vlines(theta_center, ymin=0, ymax=orbit_pos(e,a,theta_center), color='black', linestyle='-', linewidth=1.0, label = r"$t_{{mid}}$")
     if alfven != None and alfven_bool == True:
@@ -294,3 +311,12 @@ def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, omega_p = 0, title = "Ti
     if save_dir != None:
         plt.savefig(save_dir + '/' + title + '_Polar_Hist.png', dpi=500, bbox_inches='tight')
         plt.show()
+
+## Example Use Case
+# host_name = "HIP 67522"
+# catalog_dir = '/ugrad/whitsett.n/ardor_test/Tier3_Hosts/Tier_3_Flare_Params.csv'
+# phases = return_phases(catalog_dir, host_name)
+# params = Query_Planet_Parameters(host_name, table='ps', compute_epoch=True)
+# st_params = Query_Host_Params(host_name, table='ps')
+# Polar_Flare_Plot(phases['b']['computed_periastron_phases'], e=params['b']['e'], a= params['b']['a'], omega_p=params['b']['omega_st'], title = f'{host_name} b',
+#                  star_rad=st_params.Radius[0], star_teff=st_params.Teff[0], save_dir = '/ugrad/whitsett.n/ardor_test', scale = True, scale_length = 0.1, legend=True)

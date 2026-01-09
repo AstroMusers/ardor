@@ -11,7 +11,7 @@ import math
 import os
 from astropy.table import Table
 from astropy.io import ascii
-from ardor.Data_Query.Data_Query import Query_Transit_Solution, Query_Host_Params_TOI
+from ardor.Data_Query.Data_Query import Query_Transit_Solution, Query_Host_Params_TOI, Query_Planet_Parameters
 
 warnings.filterwarnings("ignore")
 def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[], output_dir = None, specifier_column = None):
@@ -324,7 +324,8 @@ def copy_output(work_dir, files_to_copy, destination_dir):
         else:
             print(f'File {file_name} does not exist in {work_dir}. Skipping.')
 
-def return_phases(catalog, host_name, host_col_header = 'Host_ID', time_col_header = 'Flare_Epoch_BJD'):
+def return_phases(catalog, host_name, host_col_header = 'Host_ID', 
+                  time_col_header = 'Epoch_BJD', TOI = False):
     '''
     Return phases of flares for a given host.
 
@@ -337,20 +338,30 @@ def return_phases(catalog, host_name, host_col_header = 'Host_ID', time_col_head
     host_col_header : str, optional
         Column header for host names. The default is 'Host_ID'.
     time_col_header : str, optional
-        Column header for flare times. The default is 'Flare_Epoch_BJD'.
-
+        Column header for flare times. The default is 'Epoch_BJD'.
     Returns
     -------
-    phases : list
-        List of phases for the flares of the specified host.
+    phases : dict
+        Returns a dictrionary of phases for each planet around the host. The keys are the planet names, and the values are another dictionary with keys 
+        'transit_phases', 'periastron_phases', and 'computed_periastron_phases', each containing a list of phases corresponding to the flare times.
 
     '''
-    
-    host_data = catalog.loc[catalog[host_col_header] == host_name]
-    times = host_data[time_col_header].to_numpy()
-    period = host_data['Orbital_Period_Days'].to_numpy()[0]
-    phases = []
-    for time in times:
-        phase = (time % period) / period
-        phases.append(phase)
-    return phases
+    data = pd.read_csv(catalog)
+    if TOI == True:
+        planet_params = Query_Transit_Solution(host_name, table = 'toi')
+    elif TOI == False:
+        planet_params = Query_Planet_Parameters(host_name, compute_epoch=True)
+    host_name = host_name.replace(' ', '')
+    times = data.loc[data[host_col_header] == host_name, time_col_header].astype(float).to_numpy()
+    periastron_phases = []
+    computed_periastron_phases = []
+    phase_dict = {}
+    for idx, planet in enumerate(planet_params.keys()):
+        period = planet_params[planet]['period']
+        transit_epoch = planet_params[planet]['peri_epoch']
+        periastron_epoch = planet_params[planet]['comp_peri_epoch']
+        transit_phases = (((times - transit_epoch) % period + period/2) / period).tolist()
+        periastron_phases = (((times - transit_epoch) % period+ period/2) / period).tolist()
+        computed_periastron_phases = (((times - periastron_epoch + period/2) % period) / period).tolist()
+        phase_dict[str(planet)] = {'transit_phases': transit_phases, 'periastron_phases': periastron_phases, 'computed_periastron_phases': computed_periastron_phases}
+    return phase_dict

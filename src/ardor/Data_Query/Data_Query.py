@@ -170,7 +170,8 @@ def Query_Transit_Solution(identifier, table = "ps"):
             periods.append(float(np.nanmedian(query_planet['pl_orbper'].value)))
             transit_mids.append(float(np.nanmax(query_planet['pl_tranmid'].value))) 
             durations.append(float(np.nanmedian(query_planet['pl_trandur'].value)))
-    return np.array(periods), np.array(transit_mids), np.array(durations)
+    param_dict = {'periods': np.array(periods),'planets': list(planets), 'transit_mids': np.array(transit_mids), 'durations': np.array(durations)}
+    return param_dict
 
 def Query_Host_Params(identifier, table = "pscomppars"):
     """Query the NASA Exoplanet Archive for stellar parameters of a host star.
@@ -317,7 +318,8 @@ def Query_Transit_Solution_TOI(identifier):
         periods.append(float(np.nanmedian(query_planet['pl_orbper'].value)))
         transit_mids.append(float(np.nanmax(query_planet['pl_tranmid'].value))) 
         durations.append(float(np.nanmedian(query_planet['pl_trandurh'].value)))
-    return np.array(periods), np.array(transit_mids), np.array(durations)
+    param_dict = {'periods': np.array(periods),'planets': list(planets), 'transit_mids': np.array(transit_mids), 'durations': np.array(durations)}
+    return param_dict
 
 def string_checker(identifier):
     """Function to standardize stellar identifiers by inserting spaces where appropriate."""
@@ -351,7 +353,7 @@ def string_checker(identifier):
         identifier = "61 Vir"
     return identifier
 
-def Query_Periastron_Epoch(identifier, table = "ps", compute_epoch = False):
+def Query_Planet_Parameters(identifier, table = "ps", compute_epoch = False):
     """
     Query the NASA Exoplanet Archive for periastron solution parameters of planets.
     This function retrieves periastron parameters (orbital period, periastron epoch, and argument of periastron)
@@ -393,18 +395,18 @@ def Query_Periastron_Epoch(identifier, table = "ps", compute_epoch = False):
 
     if type(identifier) == float or type(identifier) == int:
         if compute_epoch == False:
-            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper",
+            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_orbsmax",
                                         where=f"tic_id='TIC {str(int(identifier))}'")
         elif compute_epoch == True:
-            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_tranmid",
+            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_tranmid,pl_orbsmax",
                                         where=f"tic_id='TIC {str(int(identifier))}'")
     elif type(identifier) == str:
         identifier = string_checker(identifier)
         if compute_epoch == False:
-            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper",
+            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_orbsmax",
                                         where=f"hostname like '{str(identifier)}'")
         elif compute_epoch == True:
-            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_tranmid",
+            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_tranmid,pl_orbeccen,pl_orbsmax",
                                         where=f"hostname like '{str(identifier)}'")
     else:
         raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
@@ -413,23 +415,22 @@ def Query_Periastron_Epoch(identifier, table = "ps", compute_epoch = False):
     peri_epochs = []
     omega_sts = []
     comp_peri_epochs = []
+    param_dict = {}
     for planet in planets:
         mask = (query['pl_letter'] == planet)
         query_planet = query[mask]
         if table == 'pscomppars':
-            periods.append(float(query_planet['pl_orbper'].value)) 
-            peri_epochs.append(float(query_planet['pl_orbtper'].value))
-            omega_sts.append(float(query_planet['pl_orblper'].value))
             if compute_epoch == True:
                 comp_peri_epochs.append(transit_to_periastron_epoch(float(query_planet['pl_orbper'].value), float(query_planet['pl_orbeccen'].value), float(query_planet['pl_orblper'].value)))
             elif compute_epoch == False:
                 comp_peri_epochs.append(np.nan)
+            param_dict[str(planet)] = {'period': float(query_planet['pl_orbper'].value), 'peri_epoch': float(query_planet['pl_orbtper'].value), 
+                                       'omega_st': float(query_planet['pl_orblper'].value), 'comp_peri_epoch': comp_peri_epochs, 'a': float(query_planet['pl_orbsmax'].value), 'e': float(query_planet['pl_orbeccen'].value)}
         elif table == 'ps':
-            periods.append(float(np.nanmedian(query_planet['pl_orbper'].value)))
-            peri_epochs.append(float(np.nanmax(query_planet['pl_orbtper'].value))) 
-            omega_sts.append(float(np.nanmedian(query_planet['pl_orblper'].value)))
             if compute_epoch == False:
-                comp_peri_epochs.append(np.nan)
+                comp_peri_epochs = np.nan
             elif compute_epoch == True:
-                comp_peri_epochs.append(transit_to_periastron_epoch(float(np.nanmedian(query_planet['pl_orbper'].value)), float(np.nanmedian(query_planet['pl_orbeccen'].value)), float(np.nanmedian(query_planet['pl_orblper'].value)))+ float(np.nanmax(query_planet['pl_tranmid'].value)))
-    return (np.array(periods), np.array(peri_epochs), np.array(omega_sts), np.array(list(planets)), np.array(list(comp_peri_epochs)))
+                comp_peri_epochs = transit_to_periastron_epoch(float(np.nanmedian(query_planet['pl_orbper'].value)), float(np.nanmedian(query_planet['pl_orbeccen'].value)), float(np.nanmedian(query_planet['pl_orblper'].value)))+ float(np.nanmax(query_planet['pl_tranmid'].value))
+            param_dict[str(planet)] = {'period': float(np.nanmedian(query_planet['pl_orbper'].value)), 'peri_epoch': float(np.nanmax(query_planet['pl_orbtper'].value)), 
+                                       'omega_st': float(np.nanmedian(query_planet['pl_orblper'].value)), 'comp_peri_epoch': comp_peri_epochs, 'a': float(np.nanmedian(query_planet['pl_orbsmax'].value)), 'e': float(np.nanmedian(query_planet['pl_orbeccen'].value))}
+    return param_dict
