@@ -366,13 +366,13 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
             if N == 0:
                 param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
                 best_guess = [0, 0.01, amp_guess]
-                priors = [f'uniform -0.02 {peak_time_priors[0][1]}', 'uniform 0 0.1', f'uniform {amp_guess*1/2} {amp_guess*2}']
+                priors = [f'uniform -0.02 {peak_time_priors[0][1]}', 'uniform 0 0.05', f'uniform {amp_guess*1/2} {amp_guess*2}']
                 labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
                 units = ['days', 'days', 'rel. flux']
             if N == 1:
                 param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
                 best_guess = [0, 0.01, amp_guess]
-                priors = [f'uniform -0.002 0.002', 'uniform 0 0.1', f'uniform {amp_guess*0.99} {amp_guess*2}']
+                priors = [f'uniform -0.002 0.002', 'uniform 0 0.05', f'uniform {amp_guess*0.99} {amp_guess*2}']
                 labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
                 units = ['days', 'days', 'rel. flux']
             elif N == 2:

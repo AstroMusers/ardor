@@ -1,4 +1,4 @@
-Metadata-Version: 2.1
+Metadata-Version: 1.0
 Name: ardor
 Version: 1.0
 Summary: A flare pipeline designed to search for induced flares in exoplanet host stars.
@@ -6,3 +6,5 @@ Home-page: https://github.com/AstroMusers/ardor.git
 Author: Nathan Whitsett
 Author-email: whitsett.n@wustl.edu
 License: MIT
+Description: UNKNOWN
+Platform: UNKNOWN

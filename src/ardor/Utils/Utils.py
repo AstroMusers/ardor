@@ -9,6 +9,7 @@ import numpy as np
 import warnings
 import math
 import os
+import json
 from astropy.table import Table
 from astropy.io import ascii
 from ardor.Data_Query.Data_Query import Query_Transit_Solution, Query_Host_Params_TOI, Query_Planet_Parameters
@@ -324,6 +325,69 @@ def copy_output(work_dir, files_to_copy, destination_dir):
         else:
             print(f'File {file_name} does not exist in {work_dir}. Skipping.')
 
+def remove_duplicates(catalog_file, host_col_header='Host_ID', time_col_header='Epoch_BJD'):
+    '''
+    Identify and remove flares that occur within 10 minutes of each other in a catalog.
+    Creates a new CSV file with duplicates removed.
+    
+    Parameters
+    ----------
+    catalog_file : str
+        Path to the catalog CSV file.
+    host_col_header : str, optional
+        Column header for host identifiers. Default is 'Host_ID'.
+    time_col_header : str, optional
+        Column header for flare times in days (BJD). Default is 'Epoch_BJD'.
+    
+    Returns
+    -------
+    cleaned_catalog : pd.DataFrame
+        DataFrame containing all flares with duplicates removed.
+        The original file remains unchanged. Output saved to '{catalog_name}_v2.csv'.
+    '''
+    # Read the catalog
+    catalog = pd.read_csv(catalog_file)
+    
+    # Convert 10 minutes to days (10 minutes / (24 hours * 60 minutes))
+    time_threshold_days = 10 / (24 * 60)
+    
+    # Initialize duplicate_flag column
+    catalog['duplicate_flag'] = False
+    
+    # Get unique hosts
+    unique_hosts = catalog[host_col_header].unique()
+    
+    # For each host, flag duplicates
+    for host_id in unique_hosts:
+        host_indices = catalog[catalog[host_col_header] == host_id].index
+        
+        if len(host_indices) > 0:
+            # Sort indices by time
+            sorted_indices = catalog.loc[host_indices].sort_values(by=time_col_header).index
+            
+            # Check each flare against the previous one
+            for i in range(1, len(sorted_indices)):
+                current_idx = sorted_indices[i]
+                prev_idx = sorted_indices[i-1]
+                
+                time_diff = catalog.loc[current_idx, time_col_header] - catalog.loc[prev_idx, time_col_header]
+                if time_diff <= time_threshold_days:
+                    catalog.loc[current_idx, 'duplicate_flag'] = True
+    
+    # Remove duplicates (keep only rows where duplicate_flag is False)
+    cleaned_catalog = catalog[catalog['duplicate_flag'] == False].drop(columns=['duplicate_flag']).reset_index(drop=True)
+    
+    # Generate output filename
+    base_name = os.path.splitext(catalog_file)[0]
+    output_file = f"{base_name}_v2.csv"
+    
+    # Save the cleaned catalog
+    cleaned_catalog.to_csv(output_file, index=False)
+    print(f"✅ Duplicates removed. Cleaned catalog saved to {output_file}")
+    print(f"   Original flares: {len(catalog)}, After removing duplicates: {len(cleaned_catalog)}")
+    
+    return cleaned_catalog
+
 def return_phases(catalog, host_name, host_col_header = 'Host_ID', 
                   time_col_header = 'Epoch_BJD', TOI = False):
     '''
@@ -353,15 +417,14 @@ def return_phases(catalog, host_name, host_col_header = 'Host_ID',
         planet_params = Query_Planet_Parameters(host_name, compute_epoch=True)
     host_name = host_name.replace(' ', '')
     times = data.loc[data[host_col_header] == host_name, time_col_header].astype(float).to_numpy()
-    periastron_phases = []
-    computed_periastron_phases = []
     phase_dict = {}
     for idx, planet in enumerate(planet_params.keys()):
         period = planet_params[planet]['period']
-        transit_epoch = planet_params[planet]['peri_epoch']
-        periastron_epoch = planet_params[planet]['comp_peri_epoch']
-        transit_phases = (((times - transit_epoch) % period + period/2) / period).tolist()
-        periastron_phases = (((times - transit_epoch) % period+ period/2) / period).tolist()
-        computed_periastron_phases = (((times - periastron_epoch + period/2) % period) / period).tolist()
-        phase_dict[str(planet)] = {'transit_phases': transit_phases, 'periastron_phases': periastron_phases, 'computed_periastron_phases': computed_periastron_phases}
+        transit_epoch = planet_params[planet]['transit_epoch']
+        peri_epoch = planet_params[planet]['peri_epoch']
+        comp_peri_epoch = planet_params[planet]['comp_peri_epoch']
+        transit_phases = (((times - transit_epoch + period/2) % period) / period).tolist()
+        peri_phases = (((times - peri_epoch+ period/2) % period) / period).tolist()
+        comp_peri_phases = (((times - comp_peri_epoch + period/2) % period) / period).tolist()
+        phase_dict[str(planet)] = {'transit_phases': transit_phases, 'periastron_phases': peri_phases, 'computed_periastron_phases': comp_peri_phases}
     return phase_dict

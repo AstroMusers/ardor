@@ -1,0 +1,2 @@
+hostname,tic_id,st_teff,st_tefferr1,st_tefferr2,st_rad,st_raderr1,st_raderr2,st_mass,st_masserr1,st_masserr2
+AU Mic,441420236,3678.0,90.0,-88.0,0.744,0.023,-0.021,0.51,0.028,-0.027

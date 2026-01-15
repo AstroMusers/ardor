@@ -10,10 +10,12 @@ from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive a
 import os
 import shutil
 import numpy as np
+import pandas as pd
 from collections import namedtuple
 from astroquery.mast import Catalogs
 from ardor.SPI_Forward_Models.Orbit_Model_Library import transit_to_periastron_epoch
 import warnings
+import pandas as pd
 warnings.filterwarnings("ignore")
 def Bulk_TESS_lc_Query(RA_list, DEC_list, TIC_ID_list, download_dir, host_name_list, radius = 0.01):
     '''
@@ -173,31 +175,84 @@ def Query_Transit_Solution(identifier, table = "ps"):
     param_dict = {'periods': np.array(periods),'planets': list(planets), 'transit_mids': np.array(transit_mids), 'durations': np.array(durations)}
     return param_dict
 
-def Query_Host_Params(identifier, table = "pscomppars"):
+def Query_Host_Params(identifier, table = "pscomppars", cache_file=None):
     """Query the NASA Exoplanet Archive for stellar parameters of a host star.
     This function retrieves stellar parameters (effective temperature, stellar radius, and stellar mass)
     for a star associated with a given identifier from the NASA Exoplanet Archive.
+    
+    Parameters
+    ----------
+    identifier : str, int, or float
+        The stellar identifier. If numeric (int or float), it is treated as a TIC ID.
+        If string, it is treated as a hostname and searched using a LIKE query.
+    table : str, optional
+        The NASA Exoplanet Archive table to query. Default is "pscomppars".
+    cache_file : str, optional
+        Path to a CSV file to cache the results. If provided, results will be saved to this file.
+        Default is None (no caching).
+    
+    Returns
+    -------
     Star : namedtuple
         A named tuple containing the following stellar parameters:
-        - Teff : float
-            Effective temperature of the star in Kelvin.
-        - st_rad : float
-            Stellar radius in solar radii.
-        - st_mass : float
-            Stellar mass in solar masses.
+        - Teff : tuple of float
+            Effective temperature of the star in Kelvin as (value, upper_error, lower_error).
+        - Radius : tuple of float
+            Stellar radius in solar radii as (value, upper_error, lower_error).
+        - Mass : tuple of float
+            Stellar mass in solar masses as (value, upper_error, lower_error).
+    
+    Notes
+    -----
     - For table='ps', the function returns the median effective temperature and mass, and the maximum
       stellar radius from potentially multiple entries per star.
     """
 
+    # Determine input type and get hostname and TIC ID
+    hostname = None
+    tic_id = None
+    
     if type(identifier) == float or type(identifier) == int:
+        tic_id = int(identifier)
+        try:
+            host_query = nea.query_criteria(table=table, select="hostname",
+                                            where=f"tic_id='TIC {str(tic_id)}'")
+            if len(host_query) > 0:
+                hostname = str(host_query['hostname'][0])
+            else:
+                hostname = f"TIC {tic_id}"
+        except Exception as e:
+            print(f"⚠️  Could not query hostname for TIC ID {tic_id}. Error: {e}")
+            hostname = f"TIC {tic_id}"
+        
         query = nea.query_criteria(table=table, select="st_teff,st_rad,st_mass,st_tefferr1,st_raderr1,st_masserr1,st_tefferr2,st_raderr2,st_masserr2",
                                     where=f"tic_id='TIC {str(int(identifier))}'")
     elif type(identifier) == str:
         identifier = string_checker(identifier)
+        hostname = identifier
+        
+        # Query for TIC ID
+        try:
+            tic_query = nea.query_criteria(table=table, select="tic_id",
+                                           where=f"hostname like '{str(identifier)}'")
+            if len(tic_query) > 0:
+                tic_str = str(tic_query['tic_id'][0])
+                # Extract numeric part from "TIC XXXXXXX"
+                if 'TIC' in tic_str:
+                    tic_id = int(tic_str.split()[-1])
+                else:
+                    tic_id = None
+            else:
+                tic_id = None
+        except Exception as e:
+            print(f"⚠️  Could not query TIC ID for hostname {identifier}. Error: {e}")
+            tic_id = None
+        
         query = nea.query_criteria(table=table, select="st_teff,st_rad,st_mass,st_tefferr1,st_raderr1,st_masserr1,st_tefferr2,st_raderr2,st_masserr2",
                                     where=f"hostname like '{str(identifier)}'")
     else:
         raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
+    
     if table == 'pscomppars':
         Teff = float(query['st_teff'][0].value)
         Teff_u = float(query['st_tefferr1'][0].value)
@@ -218,12 +273,43 @@ def Query_Host_Params(identifier, table = "pscomppars"):
         st_mass = float(np.nanmedian(query['st_mass'].value))
         st_mass_u = float(np.nanmax(query['st_masserr1'].value))
         st_mass_l = float(np.nanmax(query['st_masserr2'].value))
+    
+    # Save to cache file if requested
+    if cache_file is not None:
+        try:
+            cache_data = {
+                'hostname': [hostname],
+                'tic_id': [tic_id],
+                'st_teff': [Teff],
+                'st_tefferr1': [Teff_u],
+                'st_tefferr2': [Teff_l],
+                'st_rad': [st_rad],
+                'st_raderr1': [st_rad_u],
+                'st_raderr2': [st_rad_l],
+                'st_mass': [st_mass],
+                'st_masserr1': [st_mass_u],
+                'st_masserr2': [st_mass_l]
+            }
+            cache_df = pd.DataFrame(cache_data)
+            
+            # Create directory if it doesn't exist
+            cache_dir = os.path.dirname(cache_file)
+            if cache_dir and not os.path.exists(cache_dir):
+                os.makedirs(cache_dir)
+            
+            # Save to CSV
+            cache_df.to_csv(cache_file, index=False)
+            print(f"✅ Host parameters cached to: {cache_file}")
+            print(f"   Hostname: {hostname}, TIC ID: {tic_id}")
+        except Exception as e:
+            print(f"⚠️  Failed to save cache file {cache_file}. Error: {e}")
+    
     Star = namedtuple("Star", ["Teff", "Radius", "Mass"])
     return Star((Teff,Teff_u,Teff_l), (st_rad,st_rad_u,st_rad_l), (st_mass,st_mass_u,st_mass_l))
 
 
 
-def Query_Host_Params_TOI(identifier):
+def Query_Host_Params_TOI(identifier, cache_file=None):
     """Query the NASA Exoplanet Archive for stellar parameters of a host star using TOI identifier.
 
     This function retrieves stellar parameters (effective temperature and stellar radius with uncertainties)
@@ -233,6 +319,9 @@ def Query_Host_Params_TOI(identifier):
     ----------
     identifier : int or str
         The TOI identifier number. Will be converted to integer format for the query.
+    cache_file : str, optional
+        Path to a CSV file to cache the results. If provided, results will be saved to this file.
+        Default is None (no caching).
 
     Returns
     -------
@@ -254,20 +343,52 @@ def Query_Host_Params_TOI(identifier):
     - Only the first result from the query is returned.
     """
     try:
-        query = nea.query_criteria(table="toi", select="st_teff,st_rad,st_tefferr1,st_raderr1,st_tefferr2,st_raderr2",
+        query = nea.query_criteria(table="toi", select="st_teff,st_rad,st_tefferr1,st_raderr1,st_tefferr2,st_raderr2,hostname",
                                     where=f"toipfx='{str(int(identifier))}'")
     except:
         raise ValueError("Identifier must be the TOI ID as an integer.")
+    
+    toi_id = int(identifier)
+    hostname = str(query['hostname'][0]) if 'hostname' in query.colnames and len(query) > 0 else f"TOI {toi_id}"
+    
     Teff = float(query['st_teff'][0].value)
     Teff_u = float(query['st_tefferr1'][0].value)
     Teff_l = -float(query['st_tefferr2'][0].value)
     st_rad = float(query['st_rad'][0].value)
     st_rad_u = float(query['st_raderr1'][0].value)
     st_rad_l = -float(query['st_raderr2'][0].value)
+    
+    # Save to cache file if requested
+    if cache_file is not None:
+        try:
+            cache_data = {
+                'toi_id': [toi_id],
+                'hostname': [hostname],
+                'st_teff': [Teff],
+                'st_tefferr1': [Teff_u],
+                'st_tefferr2': [Teff_l],
+                'st_rad': [st_rad],
+                'st_raderr1': [st_rad_u],
+                'st_raderr2': [st_rad_l]
+            }
+            cache_df = pd.DataFrame(cache_data)
+            
+            # Create directory if it doesn't exist
+            cache_dir = os.path.dirname(cache_file)
+            if cache_dir and not os.path.exists(cache_dir):
+                os.makedirs(cache_dir)
+            
+            # Save to CSV
+            cache_df.to_csv(cache_file, index=False)
+            print(f"✅ Host parameters cached to: {cache_file}")
+            print(f"   TOI ID: {toi_id}, Hostname: {hostname}")
+        except Exception as e:
+            print(f"⚠️  Failed to save cache file {cache_file}. Error: {e}")
+    
     Star = namedtuple("Star", ["Teff", "Radius"])
     return Star((Teff,Teff_u,Teff_l), (st_rad,st_rad_u,st_rad_l))
 
-def Query_Transit_Solution_TOI(identifier):
+def Query_Transit_Solution_TOI(identifier, cache_file=None):
     """
     Query the NASA Exoplanet Archive for transit solution parameters of TOI planets.
     
@@ -278,6 +399,9 @@ def Query_Transit_Solution_TOI(identifier):
     ----------
     identifier : int or float
         The TOI identifier number. Will be converted to integer format for the query.
+    cache_file : str, optional
+        Path to a CSV file to cache the results. If provided, results will be saved to this file.
+        Default is None (no caching).
     
     Returns
     -------
@@ -304,10 +428,14 @@ def Query_Transit_Solution_TOI(identifier):
 
 
     if type(identifier) == float or type(identifier) == int:
-        query = nea.query_criteria(table="toi", select="toi,pl_orbper,pl_tranmid,pl_trandurh",
+        query = nea.query_criteria(table="toi", select="toi,pl_orbper,pl_tranmid,pl_trandurh,hostname",
                                     where=f"toipfx='{str(int(identifier))}'")
     else:
         raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
+    
+    toi_id = int(identifier)
+    hostname = str(query['hostname'][0]) if 'hostname' in query.colnames and len(query) > 0 else f"TOI {toi_id}"
+    
     planets = set(query['toi'])
     periods = []
     transit_mids = []
@@ -318,6 +446,36 @@ def Query_Transit_Solution_TOI(identifier):
         periods.append(float(np.nanmedian(query_planet['pl_orbper'].value)))
         transit_mids.append(float(np.nanmax(query_planet['pl_tranmid'].value))) 
         durations.append(float(np.nanmedian(query_planet['pl_trandurh'].value)))
+    
+    # Save to cache file if requested
+    if cache_file is not None:
+        try:
+            cache_data = []
+            for idx, planet in enumerate(planets):
+                row = {
+                    'toi_id': toi_id,
+                    'hostname': hostname,
+                    'toi': planet,
+                    'pl_orbper': periods[idx],
+                    'pl_tranmid': transit_mids[idx],
+                    'pl_trandurh': durations[idx]
+                }
+                cache_data.append(row)
+            
+            cache_df = pd.DataFrame(cache_data)
+            
+            # Create directory if it doesn't exist
+            cache_dir = os.path.dirname(cache_file)
+            if cache_dir and not os.path.exists(cache_dir):
+                os.makedirs(cache_dir)
+            
+            # Save to CSV
+            cache_df.to_csv(cache_file, index=False)
+            print(f"✅ Transit parameters cached to: {cache_file}")
+            print(f"   TOI ID: {toi_id}, Hostname: {hostname}")
+        except Exception as e:
+            print(f"⚠️  Failed to save cache file {cache_file}. Error: {e}")
+    
     param_dict = {'periods': np.array(periods),'planets': list(planets), 'transit_mids': np.array(transit_mids), 'durations': np.array(durations)}
     return param_dict
 
@@ -351,9 +509,15 @@ def string_checker(identifier):
         identifier = "51 Peg"
     if identifier.startswith("61Vir") and ' ' not in identifier:
         identifier = "61 Vir"
+    if identifier.startswith("Teegarden") and ' ' not in identifier:
+        identifier = "Teegarden's Star"
+    if identifier.startswith("V830") and ' ' not in identifier:
+        identifier = "V830 Tau"
+    if identifier.startswith("V830") and ' ' not in identifier:
+        identifier = "V830 Tau"
     return identifier
 
-def Query_Planet_Parameters(identifier, table = "ps", compute_epoch = False):
+def Query_Planet_Parameters(identifier, table = "ps", compute_epoch = False, cache_file = None):
     """
     Query the NASA Exoplanet Archive for periastron solution parameters of planets.
     This function retrieves periastron parameters (orbital period, periastron epoch, and argument of periastron)
@@ -369,6 +533,9 @@ def Query_Planet_Parameters(identifier, table = "ps", compute_epoch = False):
         and "ps" (Planetary Systems). The aggregation method differs by table.
     compute_epoch : bool, optional
         If True, compute the periastron epoch from transit mid-time and argument of periastron, if available. Default is False.
+    cache_file : str, optional
+        Path to a CSV file to cache the results. If provided, results will be saved to this file.
+        Default is None (no caching).
     Returns
     -------
     periods : numpy.ndarray
@@ -391,29 +558,62 @@ def Query_Planet_Parameters(identifier, table = "ps", compute_epoch = False):
     - All returned arrays have the same length, corresponding to the number of transiting
       planets found.
     """
-
-
+    
+    # Determine input type and get hostname and TIC ID
+    hostname = None
+    tic_id = None
+    
     if type(identifier) == float or type(identifier) == int:
+        # Input is TIC ID, query for hostname
+        tic_id = int(identifier)
+        try:
+            host_query = nea.query_criteria(table=table, select="hostname",
+                                            where=f"tic_id='TIC {str(tic_id)}'")
+            if len(host_query) > 0:
+                hostname = str(host_query['hostname'][0])
+            else:
+                hostname = f"TIC {tic_id}"
+        except Exception as e:
+            print(f"⚠️  Could not query hostname for TIC ID {tic_id}. Error: {e}")
+            hostname = f"TIC {tic_id}"
+        
         if compute_epoch == False:
-            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_orbsmax",
+            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_orbsmax,pl_tranmid",
                                         where=f"tic_id='TIC {str(int(identifier))}'")
         elif compute_epoch == True:
-            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_tranmid,pl_orbsmax",
+            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_tranmid,pl_orbsmax,pl_tranmid",
                                         where=f"tic_id='TIC {str(int(identifier))}'")
     elif type(identifier) == str:
         identifier = string_checker(identifier)
+        hostname = identifier
+        
+        # Query for TIC ID
+        try:
+            tic_query = nea.query_criteria(table=table, select="tic_id",
+                                           where=f"hostname like '{str(identifier)}'")
+            if len(tic_query) > 0:
+                tic_str = str(tic_query['tic_id'][0])
+                # Extract numeric part from "TIC XXXXXXX"
+                if 'TIC' in tic_str:
+                    tic_id = int(tic_str.split()[-1])
+                else:
+                    tic_id = None
+            else:
+                tic_id = None
+        except Exception as e:
+            print(f"⚠️  Could not query TIC ID for hostname {identifier}. Error: {e}")
+            tic_id = None
+        
         if compute_epoch == False:
-            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_orbsmax",
+            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_orbsmax,pl_tranmid",
                                         where=f"hostname like '{str(identifier)}'")
         elif compute_epoch == True:
-            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_tranmid,pl_orbeccen,pl_orbsmax",
+            query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_tranmid,pl_orbeccen,pl_orbsmax,pl_tranmid",
                                         where=f"hostname like '{str(identifier)}'")
     else:
         raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
+    
     planets = set(query['pl_letter'])
-    periods = []
-    peri_epochs = []
-    omega_sts = []
     comp_peri_epochs = []
     param_dict = {}
     for planet in planets:
@@ -425,12 +625,62 @@ def Query_Planet_Parameters(identifier, table = "ps", compute_epoch = False):
             elif compute_epoch == False:
                 comp_peri_epochs.append(np.nan)
             param_dict[str(planet)] = {'period': float(query_planet['pl_orbper'].value), 'peri_epoch': float(query_planet['pl_orbtper'].value), 
-                                       'omega_st': float(query_planet['pl_orblper'].value), 'comp_peri_epoch': comp_peri_epochs, 'a': float(query_planet['pl_orbsmax'].value), 'e': float(query_planet['pl_orbeccen'].value)}
+                                       'omega_st': float(query_planet['pl_orblper'].value),'transit_epoch': float(np.nanmedian(query_planet['pl_tranmid'].value)), 'comp_peri_epoch': comp_peri_epochs, 'a': float(query_planet['pl_orbsmax'].value), 'e': float(query_planet['pl_orbeccen'].value)}
         elif table == 'ps':
             if compute_epoch == False:
                 comp_peri_epochs = np.nan
             elif compute_epoch == True:
                 comp_peri_epochs = transit_to_periastron_epoch(float(np.nanmedian(query_planet['pl_orbper'].value)), float(np.nanmedian(query_planet['pl_orbeccen'].value)), float(np.nanmedian(query_planet['pl_orblper'].value)))+ float(np.nanmax(query_planet['pl_tranmid'].value))
             param_dict[str(planet)] = {'period': float(np.nanmedian(query_planet['pl_orbper'].value)), 'peri_epoch': float(np.nanmax(query_planet['pl_orbtper'].value)), 
-                                       'omega_st': float(np.nanmedian(query_planet['pl_orblper'].value)), 'comp_peri_epoch': comp_peri_epochs, 'a': float(np.nanmedian(query_planet['pl_orbsmax'].value)), 'e': float(np.nanmedian(query_planet['pl_orbeccen'].value))}
+                                       'omega_st': float(np.nanmedian(query_planet['pl_orblper'].value)),  'transit_epoch': float(np.nanmedian(query_planet['pl_tranmid'].value)),'comp_peri_epoch': comp_peri_epochs, 'a': float(np.nanmedian(query_planet['pl_orbsmax'].value)), 'e': float(np.nanmedian(query_planet['pl_orbeccen'].value))}
+    
+    # Save to cache file if requested
+    if cache_file is not None:
+        try:
+            # Convert param_dict to DataFrame with hostname and TIC ID
+            cache_data = []
+            for planet, params in param_dict.items():
+                row = {'hostname': hostname, 'tic_id': tic_id, 'planet_letter': planet}
+                row.update(params)
+                cache_data.append(row)
+            
+            cache_df = pd.DataFrame(cache_data)
+            
+            # Create directory if it doesn't exist
+            cache_dir = os.path.dirname(cache_file)
+            if cache_dir and not os.path.exists(cache_dir):
+                os.makedirs(cache_dir)
+            
+            # Save to CSV
+            cache_df.to_csv(cache_file, index=False)
+            print(f"✅ Planet parameters cached to: {cache_file}")
+            print(f"   Hostname: {hostname}, TIC ID: {tic_id}")
+        except Exception as e:
+            print(f"⚠️  Failed to save cache file {cache_file}. Error: {e}")
+    
     return param_dict
+
+def MAST_data_extractor(input_dir):
+    """Function to extract MAST data from nested directories and move them to a higher-level directory."""
+
+    for root, dirs, files in os.walk(input_dir):
+        # Get the top-level folder name
+        rel_path = os.path.relpath(root, input_dir)
+        if rel_path == '.':
+            continue  # Skip the root directory itself
+        
+        top_folder = rel_path.split(os.sep)[0]
+        print(top_folder)
+        
+        # Move all files from this level up to the top-level folder
+        for file in files:
+            src_file = os.path.join(root, file)
+            dst_file = os.path.join(input_dir, top_folder, file)
+            
+            try:
+                shutil.move(src_file, dst_file)
+            except (NotADirectoryError, FileExistsError):
+                continue
+
+
+Query_Host_Params('AU Mic', cache_file='/ugrad/whitsett.n/ardor/test_cache/Host_Params.csv')

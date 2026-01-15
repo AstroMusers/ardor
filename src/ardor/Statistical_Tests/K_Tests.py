@@ -268,7 +268,7 @@ def K_Tests_Total(flare_df, output_dir, TOI = False, CDFs = False, sample = 10):
             for values in interest_hosts:
                 writer.writerow(values)
 
-def K_Tests(flares, periods, epoch, KS = True, KU = True, AD = True, sampling = True,
+def K_Tests(phases, KS = True, KU = True, AD = True, sampling = True,
             N = 10, sample_type = [1], peri_error = None, output_message = True, return_phases = False):
     '''
     Generates test statistics for different GoF tests to test if the provided
@@ -318,74 +318,29 @@ def K_Tests(flares, periods, epoch, KS = True, KU = True, AD = True, sampling = 
     K_tests = []
     message_str = 'Output Order\n'
     idx_counter = 0
-    for index, period in enumerate(periods):
-        if sample_type[index] == 0:
-            continue
-        phases = ((flares - (epoch[index])) % period)/period
-        phases = np.sort(phases)
-        if len(phases) >= 3 and np.isnan(phases[0]) == False and sample_type[index] != 'ignore':
-            if KS == True:
-                idx_counter += 1
-                D, p_KS = ks_1samp(phases, uniform.cdf, args=(0, 1))
-                K_tests.append(p_KS)
-                message_str += str(idx_counter) + ' KS\n'
-            if KU == True:
-                idx_counter += 1
-                a, p_KU = kuiper(phases, uniform.cdf, args=(0, 1))
-                K_tests.append(p_KU)
-                message_str += str(idx_counter) + ' KU\n'
-            if AD == True:
-                idx_counter += 1
-                A, p_AD = ad_test(phases, uniform(0,1), assume_sorted=True)
-                K_tests.append(p_AD)
-                message_str += str(idx_counter) + ' AD\n'
-            if sampling == True:
-                p_AD_Samp = []
-                p_KS_Samp = []
-                phase1 = phases
-                for samples in range(N):
-                    if sample_type[index] == 2:
-                        check = np.random.random()
-                        if check < 0.5:
-                            phase1 += np.random.random()
-                        elif check > 0.5:
-                            phase1 -= np.random.random()
-                    if sample_type[index] == 1:
-                        if peri_error == None:
-                            peri_error = [0.1]
-                        if len(peri_error) == 1:
-                            phase1 += np.random.normal(scale=peri_error[0])
-                        elif len(peri_error) == 2:
-                            check = np.random.random()
-                            if check < 0.5:
-                                phase1 -= np.random.normal(scale=peri_error[0])
-                            elif check > 0.5:
-                                phase1 += np.random.normal(scale=peri_error[1])
-                    
-                    for idx, samps in enumerate(phase1):
-                        if phase1[idx] > 1:
-                            phase1[idx] -= 1
-                        if phase1[idx] < 0:
-                            phase1[idx] += 1
-                    phase1 = np.sort(phase1)
-                    A, p_ad_samp = ad_test(phase1, uniform(0,1), assume_sorted=True)
-                    D, p_ks_samp = ks_1samp(phase1, uniform.cdf, args=(0, 1))
-                    p_AD_Samp.append(p_ad_samp)
-                    p_KS_Samp.append(p_ks_samp)
-                if KS == True:
-                    idx_counter += 1
-                    K_tests.append(np.median(p_KS_Samp))
-                    message_str += str(idx_counter) + ' KS Sampled\n'
-                if AD == True:
-                    idx_counter += 1
-                    K_tests.append(np.median(p_AD_Samp))
-                    message_str += str(idx_counter) + ' AD Sampled\n'
-            if output_message == True:
-                print(message_str)
-            if return_phases == False:
-                return K_tests
-            elif return_phases == True:
-                return K_tests
-        else:
-            return None, None
+    phases = np.sort(phases)
+    if len(phases) >= 3 and np.isnan(phases[0]) == False:
+        if KS == True:
+            idx_counter += 1
+            D, p_KS = ks_1samp(phases, uniform.cdf, args=(0, 1))
+            K_tests.append(p_KS)
+            message_str += str(idx_counter) + ' KS\n'
+        if KU == True:
+            idx_counter += 1
+            a, p_KU = kuiper(phases, uniform.cdf, args=(0, 1))
+            K_tests.append(p_KU)
+            message_str += str(idx_counter) + ' KU\n'
+        if AD == True:
+            idx_counter += 1
+            A, p_AD = ad_test(phases, uniform(0,1), assume_sorted=True)
+            K_tests.append(p_AD)
+            message_str += str(idx_counter) + ' AD\n'
+        if output_message == True:
+            print(message_str)
+        if return_phases == False:
+            return K_tests
+        elif return_phases == True:
+            return K_tests
+    else:
+        return None, None, None
         

@@ -892,7 +892,10 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False,
                 lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
                 observation_time = cadence*len(time)
                 if manual_transit_solution is not None and host_name is not None and TOI_Bool == False:
-                    period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
+                    transit_dict = Query_Transit_Solution(host_name, table='ps')
+                    period = transit_dict['periods']
+                    epoch = transit_dict['transit_mids']
+                    duration = transit_dict['durations']
                 elif TOI_Bool == True:
                     period, epoch, duration = Query_Transit_Solution_TOI(int(host_name))
                 else:
@@ -904,7 +907,7 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False,
                 # Reconstruct the full light curve with detrended transits
                 reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
                 LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
-                lc = LightCurve(reconstructed_lc.time.value, lc.flux, reconstructed_lc.flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux, sector)
+                lc = LightCurve(reconstructed_lc.time.value, lc.flux, reconstructed_lc.flux, reconstructed_lc.flux_err.value, fast, observation_time, trend.flux, sector)
             elif injection == True:
                 lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
                 detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
@@ -922,7 +925,7 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False,
                 # Reconstruct the full light curve with detrended transits
                 reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
                 LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
-                lc = LightCurve(reconstructed_lc.time, reconstructed_lc.flux, reconstructed_lc.detrended_flux, reconstructed_lc.flux_err, fast, observation_time, trend.flux, sector)
+                lc = LightCurve(reconstructed_lc.time, reconstructed_lc.flux, reconstructed_lc.detrended_flux, reconstructed_lc.flux_err.value, fast, observation_time, trend.flux, sector)
         return lc
 
 def tier0_CHEOPS(time, flux, error, scale = 401, detrend = True):
@@ -1057,7 +1060,7 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
             # Store results
             results['TOI_ID'].append(host_name)
             results['flare_number'].append(total_flare_count)
-            results['peak_time'].append(norm_time)
+            results['peak_time'].append(norm_time - 2457000)
             results['peak_time_BJD'].append(BJD)
             results['amplitude'].append(np.log(popt[1]))
             results['time_scale'].append(np.log(np.abs(popt[0])))
@@ -1230,44 +1233,57 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_di
         last_completed = completed[-1]
         last_completed = last_completed.replace('_ns_corner.png', '.csv')
         idx = flare_csvs.index(last_completed)
+        if idx == (len(flare_csvs) - 1):
+            print('All flares in this directory have been processed already.')
+            return
         flare_csvs = flare_csvs[idx+1:]
+        try:
+            sector = int(last_completed[1:3])
+        except ValueError:
+            sector = int(last_completed[1])
     for flares in flare_csvs:
-        if N_Flare_to_Model == 1:
-            params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, 
-                                                                    baseline= baseline, NS_CPUS= NS_CPUS, N_models=N_Flare_to_Model)
-        elif N_Flare_to_Model > 1:
-            params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, 
-                                                                    baseline= baseline, NS_CPUS= NS_CPUS, N_models=N_Flare_to_Model)
-        if TOI_Bool == False:
-            try:
-                star = Query_Host_Params(query_name, table = 'pscomppars')
-            except:
-                Star = namedtuple("Star", ["Teff", "Radius", "Mass"])
-                star = Star((4000,500,-500), (1,0.1,-0.1), (1,0.1,-0.1))
-        elif TOI_Bool == True:
-            star = Query_Host_Params_TOI(int(query_name))
-        flare_params = []
-        upper_uncertainty = []
-        lower_uncertainty = []
-        if params is not None:
-            N = len(params)
-            flare_number = int(flares.split('Flare_')[1].split('.csv')[0])
-            for param in params:
-                flare_params.append(param['epoch'][0])
-                flare_params.append(param['fwhm'][0])
-                flare_params.append(param['amplitude'][0])
-                lower_uncertainty.append(param['fwhm'][1])
-                upper_uncertainty.append(param['fwhm'][2])
-                lower_uncertainty.append(param['amplitude'][1])
-                upper_uncertainty.append(param['amplitude'][2])
-            energy, energy_l, energy_u = allesfitter_priors.flare_energy(np.array(flare_params), star.Teff[0], star.Radius[0], uncertainty = True, 
-                                                    param_lower=np.array(lower_uncertainty), param_upper=np.array(upper_uncertainty), Teff_unc=[star.Teff[1], star.Teff[2]], 
-                                                    R_unc=[star.Radius[1], star.Radius[2]], N=N)
-            allesfitter_priors.save_params_to_csv(host_name, flare_number, params, energy=[energy, energy_l, energy_u], dlogZ=dlogZ, output_dir=catalog_dir, cum_obs_time=cum_obs_time, fast=fast, sector=sector)
-            allesfitter_priors.copy_output(tier_3_working_dirs[model], ['ns_corner', 'ns_fit', 'logfile'], output)
-            os.rename(os.path.join(output, 'ns_corner.png', ), os.path.join(output, f'{flares.replace(".csv", "")}_ns_corner.png'))
-        for dirs in tier_3_working_dirs:
-            allesfitter_priors.clear_workingdir(dirs)
+        try:
+            if N_Flare_to_Model == 1:
+                params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, 
+                                                                        baseline= baseline, NS_CPUS= NS_CPUS, N_models=N_Flare_to_Model)
+            elif N_Flare_to_Model > 1:
+                params, dlogZ, model = allesfitter_priors.model_compare(os.path.join(tier_2_output_dir, flares), tier_3_working_dirs, templates_dir, 
+                                                                        baseline= baseline, NS_CPUS= NS_CPUS, N_models=N_Flare_to_Model)
+            if TOI_Bool == False:
+                try:
+                    star = Query_Host_Params(query_name, table = 'pscomppars')
+                except:
+                    Star = namedtuple("Star", ["Teff", "Radius", "Mass"])
+                    star = Star((4000,500,-500), (1,0.1,-0.1), (1,0.1,-0.1))
+            elif TOI_Bool == True:
+                star = Query_Host_Params_TOI(int(query_name))
+            flare_params = []
+            upper_uncertainty = []
+            lower_uncertainty = []
+            if params is not None:
+                N = len(params)
+                flare_number = int(flares.split('Flare_')[1].split('.csv')[0])
+                for param in params:
+                    flare_params.append(param['epoch'][0])
+                    flare_params.append(param['fwhm'][0])
+                    flare_params.append(param['amplitude'][0])
+                    lower_uncertainty.append(param['fwhm'][1])
+                    upper_uncertainty.append(param['fwhm'][2])
+                    lower_uncertainty.append(param['amplitude'][1])
+                    upper_uncertainty.append(param['amplitude'][2])
+                energy, energy_l, energy_u = allesfitter_priors.flare_energy(np.array(flare_params), star.Teff[0], star.Radius[0], uncertainty = True, 
+                                                        param_lower=np.array(lower_uncertainty), param_upper=np.array(upper_uncertainty), Teff_unc=[star.Teff[1], star.Teff[2]], 
+                                                        R_unc=[star.Radius[1], star.Radius[2]], N=N)
+                allesfitter_priors.save_params_to_csv(host_name, flare_number, params, energy=[energy, energy_l, energy_u], dlogZ=dlogZ, output_dir=catalog_dir, cum_obs_time=cum_obs_time, fast=fast, sector=sector)
+                allesfitter_priors.copy_output(tier_3_working_dirs[model], ['ns_corner', 'ns_fit', 'logfile'], output)
+                os.rename(os.path.join(output, 'ns_corner.png', ), os.path.join(output, f'{flares.replace(".csv", "")}_ns_corner.png'))
+            for dirs in os.listdir(tier_3_working_dir):
+                allesfitter_priors.clear_workingdir(os.path.join(tier_3_working_dir, dirs))
+        except:
+            print(f'Error with {flares}, moving to next flare.')
+            for dirs in os.listdir(tier_3_working_dir):
+                allesfitter_priors.clear_workingdir(os.path.join(tier_3_working_dir, dirs))
+            continue
 
 
 ##EVE Related Functions (Solar)
