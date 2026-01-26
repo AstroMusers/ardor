@@ -43,7 +43,6 @@ class Catalog:
         if not os.path.exists(self.catalog_dir):
             raise ValueError(f"Catalog directory does not exist: {self.catalog_dir}")
         
-        print(f"✅ Catalog initialized. Directory: {self.catalog_dir}")
     
     def list_available_catalogs(self):
         """
@@ -85,7 +84,6 @@ class Catalog:
         try:
             df = pd.read_csv(catalog_path)
             self.catalogs[catalog_name] = df
-            print(f"✅ Loaded catalog '{catalog_name}' with {len(df)} rows")
             return df
         except Exception as e:
             print(f"❌ Failed to load catalog '{catalog_name}'. Error: {e}")
@@ -139,7 +137,6 @@ class Catalog:
                 continue
             result = result[result[column] == value]
         
-        print(f"✅ Query returned {len(result)} matching rows")
         return result
     
     def get_host_data(self, catalog_name, hostname):
@@ -299,7 +296,6 @@ class Catalog:
         
         try:
             result.to_csv(output_path, index=False)
-            print(f"✅ Filtered catalog saved to: {output_path}")
             return result
         except Exception as e:
             print(f"❌ Failed to save filtered catalog. Error: {e}")

@@ -293,6 +293,102 @@ def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatte
     return reconstructed_lc, trend
 
 
+def plot_transit_detrending(original_lc, mask, transit_segments, detrended_segments, 
+                            host_name=None, sector=None, save_path=None):
+    """
+    Create diagnostic plots showing how transit segments are being detrended.
+    
+    This function generates a multi-panel figure showing:
+    1. The full light curve with transit regions highlighted
+    2. Individual transit segments (original vs detrended)
+    
+    Parameters
+    ----------
+    original_lc : lightkurve.LightCurve
+        The original light curve
+    mask : array-like (boolean)
+        Boolean mask where True indicates transit points
+    transit_segments : list
+        List of original transit segment dictionaries from extract_segments()
+    detrended_segments : list
+        List of detrended segment dictionaries from detrend_segments()
+    host_name : string, optional
+        Name of the host star for plot title (default: None)
+    sector : int, optional
+        TESS sector number for plot title (default: None)
+    save_path : string, optional
+        Path to save the figure. If None, displays the figure (default: None)
+    
+    Returns
+    -------
+    None
+        Displays or saves the plot
+    """
+    n_segments = len(transit_segments)
+    
+    # Determine figure layout
+    if n_segments == 0:
+        print("No transit segments to plot.")
+        return
+    
+    # Create figure with subplots: 1 row for full LC + rows for each segment
+    n_rows = 1 + n_segments
+    fig = plt.figure(figsize=(14, 3 * n_rows))
+    
+    # Plot 1: Full light curve with transits highlighted
+    ax1 = plt.subplot(n_rows, 1, 1)
+    ax1.plot(original_lc.time.value, original_lc.flux, 'k.', markersize=2, alpha=0.5, label='Full Light Curve')
+    
+    # Highlight transit regions
+    transit_lc = original_lc[mask]
+    ax1.plot(transit_lc.time.value, transit_lc.flux, 'r.', markersize=3, alpha=0.7, label='Transit Regions')
+    
+    ax1.set_xlabel('Time (BJD - 2457000)', fontsize=12)
+    ax1.set_ylabel('Normalized Flux', fontsize=12)
+    
+    title_parts = []
+    if host_name:
+        title_parts.append(f'{host_name}')
+    if sector:
+        title_parts.append(f'Sector {sector}')
+    title_parts.append('Transit Detrending Overview')
+    ax1.set_title(' - '.join(title_parts), fontsize=14, fontweight='bold')
+    ax1.legend(loc='best', fontsize=10)
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot each transit segment
+    for i, (orig_seg, detrend_seg) in enumerate(zip(transit_segments, detrended_segments)):
+        ax = plt.subplot(n_rows, 1, i + 2)
+        
+        # Extract data
+        time_orig = orig_seg['time']
+        flux_orig = orig_seg['flux']
+        time_detrend = detrend_seg['time']
+        flux_detrend = detrend_seg['detrended_flux']
+        trend = detrend_seg['trend']
+        
+        # Plot original data and trend
+        ax.errorbar(time_orig, flux_orig, yerr=detrend_seg['error'], fmt='b.', markersize=4, alpha=0.6, label='Original')
+        ax.plot(time_orig, trend, 'r-', linewidth=2, alpha=0.8, label='Fitted Trend')
+        
+        # Plot detrended data (offset for clarity)
+        offset = np.median(flux_orig) - np.median(flux_detrend) + 0.01
+        ax.errorbar(time_detrend, flux_detrend + offset, yerr=detrend_seg['error'], fmt='g.', markersize=4, alpha=0.6, label='Detrended (offset)')
+        
+        ax.set_xlabel('Time (BJD - 2457000)', fontsize=10)
+        ax.set_ylabel('Normalized Flux', fontsize=10)
+        ax.set_title(f'Transit Segment {i+1}', fontsize=12, fontweight='bold')
+        ax.legend(loc='best', fontsize=9)
+        ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Transit detrending plot saved to: {save_path}")
+    else:
+        plt.show()
+
 
 def extract_segments(masked_data, gap_threshold=20):
     """
@@ -561,7 +657,7 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
     flare_length_list = []
     flare = False
     begin = 0
-    end = 1000
+    end = 100
     shift = 0
     peak_index = 0
     sig = sigma*mask_data[begin:end].std()
@@ -573,9 +669,9 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
     if fast == False:
         for index, flux in enumerate(data):
             try:
-                if shift == 1000:
-                    begin += 1000
-                    end += 1000
+                if shift == 100:
+                    begin += 100
+                    end += 100
                     sig = sigma*mask_data[begin:end].std()
                     mu = np.ma.mean(mask_data[begin:end])
                     shift = 0
@@ -584,12 +680,12 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
                         flare = True
                         flare_length += 1
                         peak_index = index
-                    if flare == True and data[index+1] > (mu + sig/2):
+                    if flare == True and data[index+1] > (mu + sig/3):
                         flare_length += 1
-                    elif flare == True and data[index+1] < (mu + sig/2) and flare_length < 3:
+                    elif flare == True and data[index+1] < (mu + sig/3) and flare_length < 3:
                         flare = False
                         flare_length = 0
-                    elif flare == True and data[index+1] < (mu + sig/2) and flare_length >= 3:
+                    elif flare == True and data[index+1] < (mu + sig/3) and flare_length >= 3:
                         flare = False
                         peak_correction = np.argmax(data[peak_index:peak_index+flare_length])
                         if len(flare_indices) > 0:
@@ -642,12 +738,12 @@ def flare_ID(data, sigma, fast = False, injection = False, old = False):
                     flare = True
                     flare_length += 1
                     peak_index = index
-                if flare == True and data[index+1] > (mu + sig/2):
+                if flare == True and data[index+1] > (mu + sig/3):
                     flare_length += 1
-                elif flare == True and data[index+1] < (mu + sig/2) and flare_length < 3:
+                elif flare == True and data[index+1] < (mu + sig/3) and flare_length < 3:
                     flare = False
                     flare_length = 0
-                elif flare == True and data[index+1] < (mu + sig/2) and flare_length >= 3:
+                elif flare == True and data[index+1] < (mu + sig/3) and flare_length >= 3:
                     flare = False
                     peak_correction = np.argmax(data[peak_index:peak_index+flare_length])
                     if len(flare_indices) > 0:
@@ -814,7 +910,7 @@ def lk_detrend(data, time, scale=401, return_trend = False):
 
 ## Ardor Tiers
 def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
-          host_name=None, manual_transit_solution = None, TOI_Bool = False, inst = 'TESS'):
+          host_name=None, manual_transit_solution = None, TOI_Bool = False, inst = 'TESS', detrend = True, graphics_tier0 = False):
     """
     Tier 0 of ardor. This function accepts a TESS '...lc.fits' file, and returns
     a named tuple which contains a NAN free, detrended and normalized 
@@ -834,6 +930,8 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False,
         Whether to use specialized detrending for deep transits (default: False).
     host_name : string, optional
         Name of the host star, required when deep_transit=True (default: None).
+    graphics_tier0 : bool, optional
+        Whether to generate diagnostic plots showing transit detrending process (default: False).
 
     Returns
     -------
@@ -868,16 +966,24 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False,
             if injection == False:
                 time, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
                 lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
-                detrend_flux, trend = lk_detrend(lc.flux, lc.time.value, scale=scale, return_trend= True)
+                if detrend == True:
+                    detrend_flux, trend = lk_detrend(lc.flux, lc.time.value, scale=scale, return_trend= True)
+                else:
+                    detrend_flux = lc.flux
+                    trend = np.zeros(len(lc.flux))
                 observation_time = cadence*len(lc.time.value)
                 LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
-                lc = LightCurve(lc.time.value, lc.flux, detrend_flux, lc.flux_err, fast, observation_time, trend.flux, sector)
+                lc = LightCurve(lc.time.value, pdcsap_flux, detrend_flux, lc.flux_err, fast, observation_time, trend.flux, sector)
             elif injection == True:
                 lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
-                detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
+                if detrend == True:
+                    detrend_flux, trend = lk_detrend(lc.flux, lc.time.value, scale=scale, return_trend= True)
+                else:
+                    detrend_flux = lc.flux
+                    trend = np.zeros(len(lc.flux))
                 observation_time = cadence*len(lc.time)
                 LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
-                lc = LightCurve(lc.time.value, lc.flux, detrend_flux, lc.error, fast, observation_time, trend.flux, sector)
+                lc = LightCurve(lc.time.value, pdcsap_flux, detrend_flux, lc.error, fast, observation_time, trend.flux, sector)
         elif deep_transit == True:
             if host_name is None:
                 raise ValueError("host_name must be provided when deep_transit is True.")
@@ -890,45 +996,53 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False,
             if injection == False:
                 time, pdcsap_flux, pdcsap_error = TESS_data_extract(TESS_fits_file, PDCSAP_ERR=True)
                 lc = lk.LightCurve(time=time.value, flux=pdcsap_flux, flux_err=pdcsap_error).remove_nans()
+                raw_flux = lc.flux
                 observation_time = cadence*len(time)
-                if manual_transit_solution is not None and host_name is not None and TOI_Bool == False:
+                if manual_transit_solution is None and host_name is not None and TOI_Bool == False:
                     transit_dict = Query_Transit_Solution(host_name, table='ps')
                     period = transit_dict['periods']
                     epoch = transit_dict['transit_mids']
                     duration = transit_dict['durations']
                 elif TOI_Bool == True:
                     period, epoch, duration = Query_Transit_Solution_TOI(int(host_name))
-                else:
+                elif manual_transit_solution is not None:
                     period, epoch, duration = manual_transit_solution
                 mask = lc.create_transit_mask(period, epoch, duration/24)
                 transits = lc[mask]
                 transit_segments = extract_segments(transits)
                 detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
+                # Generate diagnostic plots if requested
+                if graphics_tier0:
+                    plot_transit_detrending(lc, mask, transit_segments, detrended_segments, host_name, sector)
                 # Reconstruct the full light curve with detrended transits
-                reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
+                reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=scale)
                 LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
-                lc = LightCurve(reconstructed_lc.time.value, lc.flux, reconstructed_lc.flux, reconstructed_lc.flux_err.value, fast, observation_time, trend.flux, sector)
+                lc = LightCurve(reconstructed_lc.time.value, pdcsap_flux, reconstructed_lc.flux, reconstructed_lc.flux_err.value, fast, observation_time, trend.flux, sector)
             elif injection == True:
                 lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
+                raw_flux = lc.flux
                 detrend_flux, trend = lk_detrend(lc.flux, lc.time, scale=scale, return_trend= True)
                 observation_time = cadence*len(lc.time)
                 if manual_transit_solution is not None and host_name is not None and TOI_Bool == False:
                     period, epoch, duration = Query_Transit_Solution(host_name, table='ps')
                 elif manual_transit_solution is not None and host_name is not None and TOI_Bool == True:
                     period, epoch, duration = Query_Transit_Solution_TOI(int(host_name))
-                else:
+                elif manual_transit_solution is not None:
                     period, epoch, duration = manual_transit_solution
                 mask = lc.create_transit_mask(period, epoch, duration/24)
                 transits = lc[mask]
                 transit_segments = extract_segments(transits)
                 detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
+                # Generate diagnostic plots if requested
+                if graphics_tier0:
+                    plot_transit_detrending(lc, mask, transit_segments, detrended_segments, host_name, sector)
                 # Reconstruct the full light curve with detrended transits
-                reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=401)
+                reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=scale)
                 LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
-                lc = LightCurve(reconstructed_lc.time, reconstructed_lc.flux, reconstructed_lc.detrended_flux, reconstructed_lc.flux_err.value, fast, observation_time, trend.flux, sector)
+                lc = LightCurve(reconstructed_lc.time, pdcsap_flux, reconstructed_lc.flux, reconstructed_lc.flux_err.value, fast, observation_time, trend.flux, sector)
         return lc
 
-def tier0_CHEOPS(time, flux, error, scale = 401, detrend = True):
+def tier0_CHEOPS(time, flux, error, scale = 401, detrend = True, graphics_tier0 = False):
     if detrend == True:
         detrend_flux, trend = lk_detrend(flux, time, scale=scale, return_trend= True)
     elif detrend == False:
@@ -939,7 +1053,7 @@ def tier0_CHEOPS(time, flux, error, scale = 401, detrend = True):
     return lc
     
 
-def tier1(time, detrended_flux, sigma, fast=False, injection = False, in_transit = False):
+def tier1(time, detrended_flux, sigma, fast=False, injection = False):
     '''
     Tier 1 of ardor. This function accepts a detrended light curve flux array,
     and a sigma value for flare detection, and returns a named tuple containing
@@ -979,7 +1093,8 @@ def tier1(time, detrended_flux, sigma, fast=False, injection = False, in_transit
 
 def tier2(lc, flares, lengths, chi_square_cutoff = 1,
           output_dir = os.getcwd(), host_name = 'My_Host', csv = True, Sim = False, injection = False, const = 0, 
-          extract_window = 50, catalog_name = 'All_Flare_Parameters.csv', header = False, cum_obs_time = 0):
+          extract_window = 50, catalog_name = 'All_Flare_Parameters.csv', header = False, cum_obs_time = 0, 
+          graphics_tier2 = True, plot_rejected = False):
     '''
     Tier 2 of ardor. This function accepts the 'lc' variable output from tier 0,
     as well as the flare indices and lengths from tier 1, and fits exponential decay models to each flare.
@@ -1003,6 +1118,10 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
         Intended as the first output from tier 2.
     output_dir : string
         The directory in which you wish to save the flare csv files to.
+    graphics_tier2 : bool, optional
+        Whether to generate plots for each flare cutout (default: True).
+    plot_rejected : bool, optional
+        Whether to plot flares that failed quality cuts. Only applies if plot_flares=True (default: False).
 
     Returns
     -------
@@ -1014,13 +1133,13 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
     pdcsap_error = lc.error
     # Initialize result containers
     results = {
-        'TOI_ID': [], 'flare_number': [], 'peak_time': [], 'peak_time_BJD': [],
+        'Host_ID': [], 'flare_number': [], 'peak_time': [], 'peak_time_BJD': [],
         'amplitude': [], 'time_scale': [], 'flare_amplitude': [], 'flare_time_scale': [],
         'chi_square': [], 'event_index': []
     }
     
     flare_count = 0
-    if csv:
+    if csv or plot_flares:
         os.makedirs(os.path.join(output_dir, str(host_name)), exist_ok=True)
     
     # Calculate median cadence for gap detection
@@ -1044,21 +1163,22 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
         new_time = (new_time - norm_time) * 24 * 60  # Convert to minutes
         
         # Fit exponential decay and validate
-        # try:
-        print(index)
-        chi_squared, popt, r_sq = _fit_flare_decay(
-            new_time, new_data, new_error, event_offset, lengths[index]
-        )
-        # except Exception:
-        #     print('Flare ID Error')
-        #     continue
+        try:
+            chi_squared, popt, r_sq, flux_min = _fit_flare_decay(
+                new_time, new_data, new_error, event_offset, lengths[index]
+            )
+        except Exception:
+            print('Flare ID Error')
+            continue
         
         # Accept flare if it meets quality criteria
-        if (chi_squared < chi_square_cutoff and popt[0] < 0) or r_sq > 0.8:
+        is_accepted = (chi_squared < chi_square_cutoff and popt[0] < 0) or r_sq > 0.8
+        
+        if is_accepted:
             flare_count += 1
             total_flare_count = flare_count + const
             # Store results
-            results['TOI_ID'].append(host_name)
+            results['Host_ID'].append(host_name)
             results['flare_number'].append(total_flare_count)
             results['peak_time'].append(norm_time - 2457000)
             results['peak_time_BJD'].append(BJD)
@@ -1080,21 +1200,123 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
                 elif lc.fast_bool == True:
                     csv_path = os.path.join(output_dir, str(host_name), f'S{lc.sector}_fast-Flare_{total_flare_count}.csv')
                 np.savetxt(csv_path, flare_data, delimiter=',', header=f'{BJD}')
+            
+            # Plot accepted flare
+            if graphics_tier2:
+                _plot_flare_cutout(new_time, new_data, new_error, popt, event_offset, 
+                                  lengths[index], chi_squared, r_sq, host_name, 
+                                  total_flare_count, lc.sector, lc.fast_bool, 
+                                  output_dir, flux_min, accepted=True)
+        
+        # Plot rejected flares if requested
+        elif plot_rejected and graphics_tier2:
+            _plot_flare_cutout(new_time, new_data, new_error, popt, event_offset, 
+                              lengths[index], chi_squared, r_sq, host_name, 
+                              index + 1, lc.sector, lc.fast_bool, 
+                              output_dir, flux_min, accepted=False)
     
     # Save catalog of all flares
-    if output_dir and results['TOI_ID']:
-        _save_flare_catalog(output_dir, catalog_name, results, lc.sector, total_flare_count, header, cum_obs_time=cum_obs_time)
+    if output_dir and results['Host_ID']:
+        _save_flare_catalog(output_dir, catalog_name, results, lc.sector, header, cum_obs_time=cum_obs_time)
     
     # Return appropriate output based on mode
     if Sim or not injection:
         catalog_data = np.column_stack((
-            results['TOI_ID'], [lc.sector] * len(results['TOI_ID']),
+            results['Host_ID'], [lc.sector] * len(results['Host_ID']),
             results['flare_number'], results['peak_time'],
             results['amplitude'], results['time_scale'], results['chi_square']
         ))
         return (catalog_data, flare_count) if not Sim else catalog_data
     
-    return flare_count
+    return flare_count, results
+
+
+def _plot_flare_cutout(time, flux, error, popt, event_idx, flare_length, 
+                       chi_squared, r_sq, host_name, flare_num, sector, 
+                       fast_bool, output_dir, flux_min, accepted=True):
+    """Create a diagnostic plot for a flare cutout with fitted model.
+    
+    Parameters
+    ----------
+    time : array-like
+        Time array in minutes (normalized to flare peak)
+    flux : array-like
+        Flux array
+    error : array-like
+        Error array
+    popt : tuple
+        Fitted parameters (a, b) from linear fit to log-transformed data
+    event_idx : int
+        Index of flare peak in the cutout
+    flare_length : int
+        Length of flare in data points
+    chi_squared : float
+        Chi-squared value of fit
+    r_sq : float
+        R-squared value of fit
+    host_name : str
+        Name of host star
+    flare_num : int
+        Flare number
+    sector : int
+        TESS sector number
+    fast_bool : bool
+        Whether data is fast cadence
+    output_dir : str
+        Directory to save plot
+    flux_min : float
+        The flux offset used in the fit (from _fit_flare_decay)
+    accepted : bool
+        Whether flare was accepted (affects plot styling and filename)
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Plot data with error bars
+    ax.errorbar(time, flux, yerr=error, fmt='o', markersize=4, 
+                alpha=0.7, label='Data', color='black', ecolor='gray')
+    
+    # Plot the peak point
+    ax.plot(time[event_idx], flux[event_idx], 'r*', markersize=15, 
+            label='Flare Peak', zorder=5)
+    
+    # Generate and plot fitted model using the same flux_min from the fit
+    fit_time = np.linspace(time[event_idx], time[event_idx] + time[min(event_idx + flare_length, len(time)-1)] - time[event_idx], 100)
+    model_flux = flux_min + np.exp(linear(fit_time, *popt))
+    
+    color = 'blue' if accepted else 'orange'
+    label = 'Exponential Fit' if accepted else 'Fit (Rejected)'
+    ax.plot(fit_time, model_flux, '-', linewidth=2, color=color, label=label)
+    
+    # Add horizontal line at median
+    ax.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, linewidth=1)
+    
+    # Labels and title
+    ax.set_xlabel('Time (minutes from peak)', fontsize=12)
+    ax.set_ylabel('Normalized Flux', fontsize=12)
+    
+    status = 'Accepted' if accepted else 'Rejected'
+    title = f'{host_name} - Sector {sector} - Flare {flare_num} ({status})'
+    ax.set_title(title, fontsize=14, fontweight='bold')
+    
+    # Add fit statistics as text
+    textstr = f'$\\chi^2_r$ = {chi_squared:.3f}\\n$R^2$ = {r_sq:.3f}'
+    props = dict(boxstyle='round', facecolor='wheat' if accepted else 'lightcoral', alpha=0.8)
+    ax.text(0.02, 0.98, textstr, transform=ax.transAxes, fontsize=11,
+            verticalalignment='top', bbox=props)
+    
+    ax.legend(loc='best', fontsize=10)
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    # Save plot
+    prefix = 'rejected_' if not accepted else ''
+    suffix = '_fast' if fast_bool else ''
+    plot_filename = f'{prefix}S{sector}{suffix}-Flare_{flare_num}_plot.png'
+    plot_path = os.path.join(output_dir, str(host_name), plot_filename)
+    
+    plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
 
 
 def _extract_flare_segment(flare_idx, flux_len, window, time_diffs, gap_threshold):
@@ -1155,18 +1377,106 @@ def _fit_flare_decay(time, flux, error, event_idx, flare_length):
         regression = linregress(fit_time[:10], log_flux[:10])
         r_sq = regression.rvalue**2
     
-    return chi_squared, popt, r_sq
+    return chi_squared, popt, r_sq, flux_min
 
 
-def _save_flare_catalog(output_dir, catalog_name, results, sector, const, header, cum_obs_time = 0):
+def _plot_flare_cutout(time, flux, error, popt, event_idx, flare_length, 
+                       chi_squared, r_sq, host_name, flare_num, sector, 
+                       fast_bool, output_dir, flux_min, accepted=True):
+    """Create a diagnostic plot for a flare cutout with fitted model.
+    
+    Parameters
+    ----------
+    time : array-like
+        Time array in minutes (normalized to flare peak)
+    flux : array-like
+        Flux array
+    error : array-like
+        Error array
+    popt : tuple
+        Fitted parameters (a, b) from linear fit to log-transformed data
+    event_idx : int
+        Index of flare peak in the cutout
+    flare_length : int
+        Length of flare in data points
+    chi_squared : float
+        Chi-squared value of fit
+    r_sq : float
+        R-squared value of fit
+    host_name : str
+        Name of host star
+    flare_num : int
+        Flare number
+    sector : int
+        TESS sector number
+    fast_bool : bool
+        Whether data is fast cadence
+    output_dir : str
+        Directory to save plot
+    flux_min : float
+        The flux offset used in the fit (from _fit_flare_decay)
+    accepted : bool
+        Whether flare was accepted (affects plot styling and filename)
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Plot data with error bars
+    ax.errorbar(time, flux, yerr=error, fmt='o', markersize=4, 
+                alpha=0.7, label='Data', color='black', ecolor='gray')
+    
+    # Plot the peak point
+    ax.plot(time[event_idx], flux[event_idx], 'r*', markersize=15, 
+            label='Flare Peak', zorder=5)
+    
+    # Generate and plot fitted model using the same flux_min from the fit
+    fit_time = np.linspace(time[event_idx], time[event_idx] + time[min(event_idx + flare_length, len(time)-1)] - time[event_idx], 100)
+    model_flux = flux_min + np.exp(linear(fit_time, *popt))
+    
+    color = 'blue' if accepted else 'orange'
+    label = 'Exponential Fit' if accepted else 'Fit (Rejected)'
+    ax.plot(fit_time, model_flux, '-', linewidth=2, color=color, label=label)
+    
+    # Add horizontal line at median
+    ax.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, linewidth=1)
+    
+    # Labels and title
+    ax.set_xlabel('Time (minutes from peak)', fontsize=12)
+    ax.set_ylabel('Normalized Flux', fontsize=12)
+    
+    status = 'Accepted' if accepted else 'Rejected'
+    title = f'{host_name} - Sector {sector} - Flare {flare_num} ({status})'
+    ax.set_title(title, fontsize=14, fontweight='bold')
+    
+    # Add fit statistics as text
+    textstr = f'$\chi^2_r$ = {chi_squared:.3f}\n$R^2$ = {r_sq:.3f}'
+    props = dict(boxstyle='round', facecolor='wheat' if accepted else 'lightcoral', alpha=0.8)
+    ax.text(0.02, 0.98, textstr, transform=ax.transAxes, fontsize=11,
+            verticalalignment='top', bbox=props)
+    
+    ax.legend(loc='best', fontsize=10)
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    # Save plot
+    prefix = 'rejected_' if not accepted else ''
+    suffix = '_fast' if fast_bool else ''
+    plot_filename = f'{prefix}S{sector}{suffix}-Flare_{flare_num}_plot.png'
+    plot_path = os.path.join(output_dir, str(host_name), plot_filename)
+    
+    plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+
+def _save_flare_catalog(output_dir, catalog_name, results, sector, header, cum_obs_time = 0):
     """Save catalog of all detected flares."""
     os.makedirs(output_dir, exist_ok=True)
     
     catalog_data = np.column_stack((
-        results['TOI_ID'], [sector] * len(results['TOI_ID']),
-        np.array(results['flare_number']) + const,
+        results['Host_ID'], [sector] * len(results['Host_ID']),
+        np.array(results['flare_number']),
         results['peak_time'], results['peak_time_BJD'],
-        results['amplitude'], results['time_scale'], results['chi_square'], np.ones(len(results['TOI_ID'])) * cum_obs_time
+        results['amplitude'], results['time_scale'], results['chi_square'], np.ones(len(results['Host_ID'])) * cum_obs_time
     ))
     
     catalog_path = os.path.join(output_dir, catalog_name)

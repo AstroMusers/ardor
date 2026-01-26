@@ -220,11 +220,11 @@ def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, omega_p = 0, title = "Ti
         ax.fill_between(theta_fill2, 0, r_fill2, color='green', alpha=0.5)
         ax.fill_between(theta_fill3, 0, r_fill3, color='darkgreen', alpha=0.5)
         ax.annotate("", xy=(theta_center+np.pi, 1*orbit_pos(e,a,theta_center+np.pi)), xytext=(theta_center+np.pi, (1.1*orbit_pos(e,a,theta_center+np.pi)+0.02)),
-                   arrowprops=dict(facecolor='black', width=3, fc='green', headwidth=6,headlength=5),va='center')
+                   arrowprops=dict(edgecolor='black', width=3, fc='green', headwidth=6,headlength=5),va='center')
         ax.annotate("LoS", xy=(theta_center+np.pi, 1*orbit_pos(e,a,theta_center+np.pi)), xytext=(theta_center+np.pi+0.1, (1.1*orbit_pos(e,a,theta_center+np.pi)+0.03)),
                    arrowprops=None,va='center')
     for index, phase in enumerate(flare_phases):
-        adj_phase = UT.range_shift(phase, 0, 1, -np.pi, np.pi)
+        adj_phase = UT.range_shift(phase, 0, 1, 0, 2*np.pi)
         if e != 0:
             flare_color = orb_colors[UT.find_nearest(orbit, orbit_pos(e,a,adj_phase))]
         elif e == 0:
@@ -264,7 +264,7 @@ def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, omega_p = 0, title = "Ti
         ax.vlines(np.pi, ymin=0, ymax=orbit_pos(e,a,np.pi), zorder=3,color='black',linestyle='--', label = 'Periastron')
     ax.set_title(title, fontsize=14)
     loc, kappa, TS = MLE.VM_Unbinned_likelihood(flare_phases)
-    loc = UT.range_shift(loc, 0,1,-np.pi, np.pi)
+    loc = UT.range_shift(loc, 0,1,0, 2*np.pi)
     PDF = vonmises.pdf(thetas, loc=loc, kappa=kappa)
     ax.plot(thetas, (PDF/np.max(PDF))*orbit_pos(e,a,loc), linestyle = '-', color='magenta', label = 'VM PDF', linewidth=1)
     plt.fill(thetas, star_rad*np.ones(len(thetas)), zorder=4, c=star_cl, edgecolor='black', linewidth=0.5)

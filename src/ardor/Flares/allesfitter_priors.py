@@ -366,13 +366,13 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
             if N == 0:
                 param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
                 best_guess = [0, 0.01, amp_guess]
-                priors = [f'uniform -0.02 {peak_time_priors[0][1]}', 'uniform 0 0.05', f'uniform {amp_guess*1/2} {amp_guess*2}']
+                priors = [f'uniform -0.001 {peak_time_priors[0][1]}', 'uniform 0 0.05', f'uniform {amp_guess*1/2} {amp_guess*2}']
                 labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
                 units = ['days', 'days', 'rel. flux']
             if N == 1:
                 param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
                 best_guess = [0, 0.01, amp_guess]
-                priors = [f'uniform -0.002 0.002', 'uniform 0 0.05', f'uniform {amp_guess*0.99} {amp_guess*2}']
+                priors = [f'uniform -0.04 0.04', 'uniform 0 0.05', f'uniform {amp_guess*0.99} {amp_guess*2}']
                 labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
                 units = ['days', 'days', 'rel. flux']
             elif N == 2:
@@ -380,15 +380,15 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
                             'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2']
                 try:
                     best_guess = [peak_time_best_guess[0], 0.01, amp_guess, peak_time_best_guess[1], 0.01, amp_guess]
-                    priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.1', f'uniform 0 {amp_guess*2}', 
-                                f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.1', f'uniform 0 {amp_guess*2}']
+                    priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.05', f'uniform 0 {amp_guess*2}', 
+                                f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.05', f'uniform 0 {amp_guess*2}']
                     labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
                                 'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
                     units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
                 except IndexError:
                     best_guess = [0, 0.01, 0.1, 0.03, 0.01, 0.1]
-                    priors = [f'uniform {-0.02} {0.02}', 'uniform 0 0.1', 'uniform 0 3', 
-                                f'uniform {0.02} {0.04}', 'uniform 0 0.1', 'uniform 0 3']
+                    priors = [f'uniform {-0.02} {0.02}', 'uniform 0 0.05', 'uniform 0 3', 
+                                f'uniform {0.02} {0.04}', 'uniform 0 0.05', 'uniform 0 3']
                     labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
                                 'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
                     units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
@@ -397,8 +397,8 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
                             'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2',
                             'flare_tpeak_3', 'flare_fwhm_3', 'flare_ampl_3']
                 best_guess = [peak_time_best_guess[0], 0.01, 0.1, peak_time_best_guess[1], 0.01, 0.1, peak_time_best_guess[2], 0.01, 0.1]
-                priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.5', 'uniform 0 3', 
-                            f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.5', 'uniform 0 3',
+                priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.05', 'uniform 0 3', 
+                            f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.05', 'uniform 0 3',
                             f'uniform {peak_time_priors[2][0]} {peak_time_priors[2][1]}', 'uniform 0 0.5', 'uniform 0 3']
                 labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
                             'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.',
@@ -492,15 +492,16 @@ def save_params_to_csv(host_name, flare_number, params, dlogZ, output_dir, energ
     except FileNotFoundError:
         file_name = output_dir + '/Tier_3_Flare_Params.csv'
         with open(output_dir + '/Tier_3_Flare_Params.csv', "a") as f:
-            f.write('Host_ID,Sector,Flare_#,Epoch_BJD,Epoch_errl,Epoch_erru,Amplitude,Amplitude_errl,Amplitude_erru,FWHMt,FWHM_errl,FWHM_erru,Energy,Energy_errl,Energy_erru,Outburst,dlogZ,Cum_Obs_Time,Cadence\n')
+            f.write('Host_ID,Sector,Flare_#,Epoch_TESS,Epoch_BJD,Epoch_errl,Epoch_erru,Amplitude,Amplitude_errl,Amplitude_erru,FWHM,FWHM_errl,FWHM_erru,Energy,Energy_errl,Energy_erru,Outburst,dlogZ,Cum_Obs_Time,Cadence\n')
             f.write('--,--,--,[BJD],[d],[d],[rel. flux],[rel. flux],[rel. flux],[d],[d],[d],[erg],[erg],[erg],--,--,[min],--\n')
     for idx in range(N_flares):
+        TESS_BJD = params[idx]['epoch_BJD'][0] - 2457000
         if fast == False:
-            ZZ = np.column_stack((host_name, sector, flare_number,params[idx]['epoch_BJD'][0], params[idx]['epoch_BJD'][1], params[idx]['epoch_BJD'][2], 
+            ZZ = np.column_stack((host_name, sector, flare_number,TESS_BJD, params[idx]['epoch_BJD'][0], params[idx]['epoch_BJD'][1], params[idx]['epoch_BJD'][2], 
                                 params[idx]['amplitude'][0], params[idx]['amplitude'][1], params[idx]['amplitude'][2], 
                                 params[idx]['fwhm'][0], params[idx]['fwhm'][1], params[idx]['fwhm'][2], energy[0], energy[1], energy[2], idx, dlogZ, cum_obs_time, '2-min'))
         if fast == True:
-            ZZ = np.column_stack((host_name, sector, flare_number,params[idx]['epoch_BJD'][0], params[idx]['epoch_BJD'][1], params[idx]['epoch_BJD'][2], 
+            ZZ = np.column_stack((host_name, sector,TESS_BJD, flare_number,params[idx]['epoch_BJD'][0], params[idx]['epoch_BJD'][1], params[idx]['epoch_BJD'][2], 
                                 params[idx]['amplitude'][0], params[idx]['amplitude'][1], params[idx]['amplitude'][2], 
                                 params[idx]['fwhm'][0], params[idx]['fwhm'][1], params[idx]['fwhm'][2], energy[0], energy[1], energy[2], idx, dlogZ, cum_obs_time, '20-sec'))
         with open(output_dir + '/Tier_3_Flare_Params.csv', "a") as f:

@@ -14,6 +14,7 @@ import pandas as pd
 from collections import namedtuple
 from astroquery.mast import Catalogs
 from ardor.SPI_Forward_Models.Orbit_Model_Library import transit_to_periastron_epoch
+from ardor.Data_Query.Catalog import Catalog
 import warnings
 import pandas as pd
 warnings.filterwarnings("ignore")
@@ -144,6 +145,37 @@ def Query_Transit_Solution(identifier, table = "ps"):
       planets found.
     """
 
+    # Try to load from catalog first
+    try:
+        catalog = Catalog()
+        catalog_name = 'Planet_Params.csv'
+        
+        # Determine hostname for catalog lookup
+        if type(identifier) == float or type(identifier) == int:
+            hostname = f"TIC {int(identifier)}"
+        elif type(identifier) == str:
+            hostname = string_checker(identifier)
+        else:
+            raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
+        
+        # Try to get data from catalog
+        cached_data = catalog.get_host_data(catalog_name, hostname)
+        
+        if cached_data is not None and len(cached_data) > 0 and 'pl_orbper' in cached_data.columns:
+            planets = cached_data['planet_letter'].unique().tolist()
+            periods = cached_data.groupby('planet_letter')['pl_orbper'].first().values
+            transit_mids = cached_data.groupby('planet_letter')['pl_tranmid'].first().values
+            durations = cached_data.groupby('planet_letter')['pl_trandur'].first().values
+            
+            param_dict = {
+                'periods': np.array(periods),
+                'planets': planets,
+                'transit_mids': np.array(transit_mids),
+                'durations': np.array(durations)
+            }
+            return param_dict
+    except (FileNotFoundError, KeyError, Exception) as e:
+        print(f"ℹ️  Catalog not found or incomplete, querying astroquery... ({e})")
 
     if type(identifier) == float or type(identifier) == int:
         query = nea.query_criteria(table=table, select="pl_letter,tran_flag,pl_orbper,pl_tranmid,pl_trandur",
@@ -173,6 +205,49 @@ def Query_Transit_Solution(identifier, table = "ps"):
             transit_mids.append(float(np.nanmax(query_planet['pl_tranmid'].value))) 
             durations.append(float(np.nanmedian(query_planet['pl_trandur'].value)))
     param_dict = {'periods': np.array(periods),'planets': list(planets), 'transit_mids': np.array(transit_mids), 'durations': np.array(durations)}
+    if len(param_dict) ==  0:
+        print(f"⚠️  No transit parameters found for {hostname}")
+    # Save to catalog
+    try:
+        catalog = Catalog()
+        catalog_name = 'Planet_Params.csv'
+        catalog_path = os.path.join(catalog.catalog_dir, catalog_name)
+        
+        cache_data = []
+        for idx, planet in enumerate(planets):
+            row = {
+                'hostname': hostname,
+                'planet_letter': planet,
+                'pl_orbper': periods[idx],
+                'pl_tranmid': transit_mids[idx],
+                'pl_trandur': durations[idx]
+            }
+            cache_data.append(row)
+        
+        cache_df = pd.DataFrame(cache_data)
+        
+        # Append or create catalog
+        if os.path.exists(catalog_path):
+            existing_df = pd.read_csv(catalog_path)
+            # Remove old transit entries for this host
+            existing_df = existing_df[~((existing_df['hostname'] == hostname) & (existing_df['planet_letter'].isin(planets)))]
+            # Merge with existing data, preserving other columns
+            for idx, new_row in cache_df.iterrows():
+                matching_rows = existing_df[(existing_df['hostname'] == hostname) & 
+                                           (existing_df['planet_letter'] == new_row['planet_letter'])]
+                if len(matching_rows) > 0:
+                    # Update existing row
+                    for col in cache_df.columns:
+                        existing_df.loc[matching_rows.index[0], col] = new_row[col]
+                else:
+                    # Add new row
+                    existing_df = pd.concat([existing_df, pd.DataFrame([new_row])], ignore_index=True)
+            cache_df = existing_df
+        
+        cache_df.to_csv(catalog_path, index=False)
+    except Exception as e:
+        print(f"⚠️  Failed to save to catalog. Error: {e}")
+    
     return param_dict
 
 def Query_Host_Params(identifier, table = "pscomppars", cache_file=None):
@@ -207,6 +282,33 @@ def Query_Host_Params(identifier, table = "pscomppars", cache_file=None):
     - For table='ps', the function returns the median effective temperature and mass, and the maximum
       stellar radius from potentially multiple entries per star.
     """
+
+    # Try to load from catalog first
+    try:
+        catalog = Catalog()
+        catalog_name = 'Host_Params.csv'
+        
+        # Determine hostname for catalog lookup
+        if type(identifier) == float or type(identifier) == int:
+            hostname_lookup = f"TIC {int(identifier)}"
+        elif type(identifier) == str:
+            hostname_lookup = string_checker(identifier)
+        else:
+            raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
+        
+        # Try to get data from catalog
+        cached_data = catalog.get_host_data(catalog_name, hostname_lookup)
+        
+        if cached_data is not None and len(cached_data) > 0:
+            row = cached_data.iloc[0]
+            Star = namedtuple("Star", ["Teff", "Radius", "Mass"])
+            return Star(
+                (row['st_teff'], row['st_tefferr1'], row['st_tefferr2']),
+                (row['st_rad'], row['st_raderr1'], row['st_raderr2']),
+                (row['st_mass'], row['st_masserr1'], row['st_masserr2'])
+            )
+    except (FileNotFoundError, KeyError, Exception) as e:
+        print(f"ℹ️  Catalog not found or incomplete, querying astroquery... ({e})")
 
     # Determine input type and get hostname and TIC ID
     hostname = None
@@ -299,10 +401,39 @@ def Query_Host_Params(identifier, table = "pscomppars", cache_file=None):
             
             # Save to CSV
             cache_df.to_csv(cache_file, index=False)
-            print(f"✅ Host parameters cached to: {cache_file}")
-            print(f"   Hostname: {hostname}, TIC ID: {tic_id}")
         except Exception as e:
             print(f"⚠️  Failed to save cache file {cache_file}. Error: {e}")
+    
+    # Save to catalog
+    try:
+        catalog = Catalog()
+        catalog_name = 'Host_Params.csv'
+        cache_data = {
+            'hostname': [hostname],
+            'tic_id': [tic_id],
+            'st_teff': [Teff],
+            'st_tefferr1': [Teff_u],
+            'st_tefferr2': [Teff_l],
+            'st_rad': [st_rad],
+            'st_raderr1': [st_rad_u],
+            'st_raderr2': [st_rad_l],
+            'st_mass': [st_mass],
+            'st_masserr1': [st_mass_u],
+            'st_masserr2': [st_mass_l]
+        }
+        cache_df = pd.DataFrame(cache_data)
+        catalog_path = os.path.join(catalog.catalog_dir, catalog_name)
+        
+        # Append or create catalog
+        if os.path.exists(catalog_path):
+            existing_df = pd.read_csv(catalog_path)
+            # Remove old entries for this host
+            existing_df = existing_df[existing_df['hostname'] != hostname]
+            cache_df = pd.concat([existing_df, cache_df], ignore_index=True)
+        
+        cache_df.to_csv(catalog_path, index=False)
+    except Exception as e:
+        print(f"⚠️  Failed to save to catalog. Error: {e}")
     
     Star = namedtuple("Star", ["Teff", "Radius", "Mass"])
     return Star((Teff,Teff_u,Teff_l), (st_rad,st_rad_u,st_rad_l), (st_mass,st_mass_u,st_mass_l))
@@ -342,6 +473,27 @@ def Query_Host_Params_TOI(identifier, cache_file=None):
     - Lower uncertainties (err2) are returned as positive values (negation applied).
     - Only the first result from the query is returned.
     """
+    
+    # Try to load from catalog first
+    toi_id = int(identifier)
+    try:
+        catalog = Catalog()
+        catalog_name = 'Host_Params_TOI.csv'
+        
+        # Try to get data from catalog
+        cached_data = catalog.query_catalog(catalog_name, toi_id=toi_id)
+        
+        if cached_data is not None and len(cached_data) > 0:
+            print(f"✅ Found TOI host parameters in catalog for TOI {toi_id}")
+            row = cached_data.iloc[0]
+            Star = namedtuple("Star", ["Teff", "Radius"])
+            return Star(
+                (row['st_teff'], row['st_tefferr1'], row['st_tefferr2']),
+                (row['st_rad'], row['st_raderr1'], row['st_raderr2'])
+            )
+    except (FileNotFoundError, KeyError, Exception) as e:
+        print(f"ℹ️  Catalog not found or incomplete, querying astroquery... ({e})")
+    
     try:
         query = nea.query_criteria(table="toi", select="st_teff,st_rad,st_tefferr1,st_raderr1,st_tefferr2,st_raderr2,hostname",
                                     where=f"toipfx='{str(int(identifier))}'")
@@ -385,6 +537,34 @@ def Query_Host_Params_TOI(identifier, cache_file=None):
         except Exception as e:
             print(f"⚠️  Failed to save cache file {cache_file}. Error: {e}")
     
+    # Save to catalog
+    try:
+        catalog = Catalog()
+        catalog_name = 'Host_Params_TOI.csv'
+        cache_data = {
+            'toi_id': [toi_id],
+            'hostname': [hostname],
+            'st_teff': [Teff],
+            'st_tefferr1': [Teff_u],
+            'st_tefferr2': [Teff_l],
+            'st_rad': [st_rad],
+            'st_raderr1': [st_rad_u],
+            'st_raderr2': [st_rad_l]
+        }
+        cache_df = pd.DataFrame(cache_data)
+        catalog_path = os.path.join(catalog.catalog_dir, catalog_name)
+        
+        # Append or create catalog
+        if os.path.exists(catalog_path):
+            existing_df = pd.read_csv(catalog_path)
+            # Remove old entries for this TOI
+            existing_df = existing_df[existing_df['toi_id'] != toi_id]
+            cache_df = pd.concat([existing_df, cache_df], ignore_index=True)
+        
+        cache_df.to_csv(catalog_path, index=False)
+    except Exception as e:
+        print(f"⚠️  Failed to save to catalog. Error: {e}")
+    
     Star = namedtuple("Star", ["Teff", "Radius"])
     return Star((Teff,Teff_u,Teff_l), (st_rad,st_rad_u,st_rad_l))
 
@@ -426,6 +606,31 @@ def Query_Transit_Solution_TOI(identifier, cache_file=None):
       TOIs found matching the identifier.
     """
 
+    # Try to load from catalog first
+    toi_id = int(identifier)
+    try:
+        catalog = Catalog()
+        catalog_name = 'Transit_Solution_TOI.csv'
+        
+        # Try to get data from catalog
+        cached_data = catalog.query_catalog(catalog_name, toi_id=toi_id)
+        
+        if cached_data is not None and len(cached_data) > 0:
+            print(f"✅ Found TOI transit solution in catalog for TOI {toi_id}")
+            planets = cached_data['toi'].unique().tolist()
+            periods = cached_data.groupby('toi')['pl_orbper'].first().values
+            transit_mids = cached_data.groupby('toi')['pl_tranmid'].first().values
+            durations = cached_data.groupby('toi')['pl_trandurh'].first().values
+            
+            param_dict = {
+                'periods': np.array(periods),
+                'planets': planets,
+                'transit_mids': np.array(transit_mids),
+                'durations': np.array(durations)
+            }
+            return param_dict
+    except (FileNotFoundError, KeyError, Exception) as e:
+        print(f"ℹ️  Catalog not found or incomplete, querying astroquery... ({e})")
 
     if type(identifier) == float or type(identifier) == int:
         query = nea.query_criteria(table="toi", select="toi,pl_orbper,pl_tranmid,pl_trandurh,hostname",
@@ -476,21 +681,66 @@ def Query_Transit_Solution_TOI(identifier, cache_file=None):
         except Exception as e:
             print(f"⚠️  Failed to save cache file {cache_file}. Error: {e}")
     
+    # Save to catalog
+    try:
+        catalog = Catalog()
+        catalog_name = 'TOI_Catalog.csv'
+        cache_data = []
+        for idx, planet in enumerate(planets):
+            row = {
+                'toi_id': toi_id,
+                'hostname': hostname,
+                'toi': planet,
+                'pl_orbper': periods[idx],
+                'pl_tranmid': transit_mids[idx],
+                'pl_trandurh': durations[idx]
+            }
+            cache_data.append(row)
+        
+        cache_df = pd.DataFrame(cache_data)
+        catalog_path = os.path.join(catalog.catalog_dir, catalog_name)
+        
+        # Append or create catalog
+        if os.path.exists(catalog_path):
+            existing_df = pd.read_csv(catalog_path)
+            # Remove old entries for this TOI
+            existing_df = existing_df[existing_df['toi_id'] != toi_id]
+            cache_df = pd.concat([existing_df, cache_df], ignore_index=True)
+        
+        cache_df.to_csv(catalog_path, index=False)
+        print(f"✅ TOI transit solution cached to catalog for TOI {toi_id}")
+    except Exception as e:
+        print(f"⚠️  Failed to save to catalog. Error: {e}")
+    
     param_dict = {'periods': np.array(periods),'planets': list(planets), 'transit_mids': np.array(transit_mids), 'durations': np.array(durations)}
     return param_dict
 
 def string_checker(identifier):
     """Function to standardize stellar identifiers by inserting spaces where appropriate."""
-    if (identifier.startswith('L') and 'LHS' not in identifier and 'LP' not in identifier and 'Lupus' not in identifier) and ' ' not in identifier:
+    if (identifier.startswith('BD')) and ' ' not in identifier:
+        identifier = identifier[0:5] + ' ' + identifier[5:]
+        return identifier
+    if (identifier.startswith('Gliese')) and ' ' not in identifier:
+        identifier = identifier[0:6] + ' ' + identifier[6:]
+        return identifier
+    if (identifier.startswith('LSPM')) and ' ' not in identifier:
+        identifier = identifier[0:4] + ' ' + identifier[4:]
+        return identifier
+    if (identifier.startswith('L') and 'LHS' not in identifier and 'LTT' not in identifier and 'LP' not in identifier and 'Lupus' not in identifier) and ' ' not in identifier:
+        identifier = identifier[0:1] + ' ' + identifier[1:]
+        return identifier
+    if (identifier.startswith('HD') or identifier.startswith('CD') or identifier.startswith('Gl') or identifier.startswith('WD') or identifier.startswith('HR') or identifier.startswith('GJ')) or identifier.startswith('LP') and ' ' not in identifier:
         identifier = identifier[0:2] + ' ' + identifier[2:]
-    if (identifier.startswith('HD') or identifier.startswith('CD') or identifier.startswith('Gl') or identifier.startswith('WD') or identifier.startswith('HR') or identifier.startswith('GJ')) and ' ' not in identifier:
-        identifier = identifier[0:2] + ' ' + identifier[2:]
-    if (identifier.startswith('HIP') or identifier.startswith('LHS') or identifier.startswith('TAP') or identifier.startswith('TIC')) and ' ' not in identifier:
+        return identifier
+    if (identifier.startswith('HIP') or identifier.startswith('LHS') or identifier.startswith('TAP') or (identifier.startswith('LTT')) or identifier.startswith('TIC')) and ' ' not in identifier:
         identifier = identifier[0:3] + ' ' + identifier[3:]
+        return identifier
     if (identifier.startswith('EPIC') or identifier.startswith('Ross') or identifier.startswith('Wolf')) and ' ' not in identifier:
         identifier = identifier[0:4] + ' ' + identifier[4:]
-    if (identifier.startswith('Gliese')) and ' ' not in identifier:
-        identifier = identifier[0:7] + ' ' + identifier[7:]
+        return identifier
+    if (identifier[-1] == 'A' or identifier[-1] == 'B' or identifier[-1] == 'N'):
+        identifier = identifier[0:-1] + ' ' + identifier[-1]
+        return identifier
     if identifier.startswith('Proxima') and ' ' not in identifier:
         identifier = 'Proxima Cen'
     if identifier.startswith('AU') and ' ' not in identifier:
@@ -503,19 +753,29 @@ def string_checker(identifier):
         identifier = 'ups And'
     if identifier.startswith('HSPsc') and ' ' not in identifier:
         identifier = 'HS Psc'
-    if identifier.startswith("Barnard'sstar") and ' ' not in identifier:
-        identifier = "Barnard's star"
+    if identifier.startswith("Barnard") and ' ' not in identifier:
+        identifier = "Barnard''s star"
     if identifier.startswith("51Peg") and ' ' not in identifier:
         identifier = "51 Peg"
+        return identifier
     if identifier.startswith("61Vir") and ' ' not in identifier:
         identifier = "61 Vir"
+        return identifier
     if identifier.startswith("Teegarden") and ' ' not in identifier:
-        identifier = "Teegarden's Star"
+        identifier = "Teegarden''s Star"
+        return identifier
     if identifier.startswith("V830") and ' ' not in identifier:
         identifier = "V830 Tau"
+        return identifier
     if identifier.startswith("V830") and ' ' not in identifier:
         identifier = "V830 Tau"
-    return identifier
+        return identifier
+    if identifier.startswith("L1") and ' ' not in identifier:
+        identifier = "L1 68"
+        return identifier
+    if identifier.startswith("YZ") and ' ' not in identifier:
+        identifier = "YZ Cet"
+        return identifier
 
 def Query_Planet_Parameters(identifier, table = "ps", compute_epoch = False, cache_file = None):
     """
@@ -558,6 +818,39 @@ def Query_Planet_Parameters(identifier, table = "ps", compute_epoch = False, cac
     - All returned arrays have the same length, corresponding to the number of transiting
       planets found.
     """
+    
+    # Try to load from catalog first
+    try:
+        catalog = Catalog()
+        catalog_name = 'Planet_Params.csv'
+        
+        # Determine hostname for catalog lookup
+        if type(identifier) == float or type(identifier) == int:
+            hostname_lookup = f"TIC {int(identifier)}"
+        elif type(identifier) == str:
+            hostname_lookup = string_checker(identifier)
+        else:
+            raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
+        
+        # Try to get data from catalog
+        cached_data = catalog.get_host_data(catalog_name, hostname_lookup)
+        
+        if cached_data is not None and len(cached_data) > 0:
+            param_dict = {}
+            for _, row in cached_data.iterrows():
+                planet = row['planet_letter']
+                param_dict[planet] = {
+                    'period': row['period'],
+                    'peri_epoch': row['peri_epoch'],
+                    'omega_st': row['omega_st'],
+                    'transit_epoch': row['transit_epoch'],
+                    'comp_peri_epoch': row['comp_peri_epoch'],
+                    'a': row['a'],
+                    'e': row['e']
+                }
+            return param_dict
+    except (FileNotFoundError, KeyError, Exception) as e:
+        print(f"ℹ️  Catalog not found or incomplete, querying astroquery... ({e})")
     
     # Determine input type and get hostname and TIC ID
     hostname = None
@@ -614,49 +907,63 @@ def Query_Planet_Parameters(identifier, table = "ps", compute_epoch = False, cac
         raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
     
     planets = set(query['pl_letter'])
-    comp_peri_epochs = []
     param_dict = {}
     for planet in planets:
         mask = (query['pl_letter'] == planet)
         query_planet = query[mask]
         if table == 'pscomppars':
             if compute_epoch == True:
-                comp_peri_epochs.append(transit_to_periastron_epoch(float(query_planet['pl_orbper'].value), float(query_planet['pl_orbeccen'].value), float(query_planet['pl_orblper'].value)))
+                comp_peri_epoch = transit_to_periastron_epoch(float(query_planet['pl_orbper'].value), float(query_planet['pl_orbeccen'].value), float(query_planet['pl_orblper'].value))
             elif compute_epoch == False:
-                comp_peri_epochs.append(np.nan)
+                comp_peri_epoch = np.nan
             param_dict[str(planet)] = {'period': float(query_planet['pl_orbper'].value), 'peri_epoch': float(query_planet['pl_orbtper'].value), 
-                                       'omega_st': float(query_planet['pl_orblper'].value),'transit_epoch': float(np.nanmedian(query_planet['pl_tranmid'].value)), 'comp_peri_epoch': comp_peri_epochs, 'a': float(query_planet['pl_orbsmax'].value), 'e': float(query_planet['pl_orbeccen'].value)}
+                                       'omega_st': float(query_planet['pl_orblper'].value),'transit_epoch': float(np.nanmedian(query_planet['pl_tranmid'].value)), 'comp_peri_epoch': comp_peri_epoch, 'a': float(query_planet['pl_orbsmax'].value), 'e': float(query_planet['pl_orbeccen'].value)}
         elif table == 'ps':
             if compute_epoch == False:
-                comp_peri_epochs = np.nan
+                comp_peri_epoch = np.nan
             elif compute_epoch == True:
-                comp_peri_epochs = transit_to_periastron_epoch(float(np.nanmedian(query_planet['pl_orbper'].value)), float(np.nanmedian(query_planet['pl_orbeccen'].value)), float(np.nanmedian(query_planet['pl_orblper'].value)))+ float(np.nanmax(query_planet['pl_tranmid'].value))
+                comp_peri_epoch = transit_to_periastron_epoch(float(np.nanmedian(query_planet['pl_orbper'].value)), float(np.nanmedian(query_planet['pl_orbeccen'].value)), float(np.nanmedian(query_planet['pl_orblper'].value)))+ float(np.nanmax(query_planet['pl_tranmid'].value))
             param_dict[str(planet)] = {'period': float(np.nanmedian(query_planet['pl_orbper'].value)), 'peri_epoch': float(np.nanmax(query_planet['pl_orbtper'].value)), 
-                                       'omega_st': float(np.nanmedian(query_planet['pl_orblper'].value)),  'transit_epoch': float(np.nanmedian(query_planet['pl_tranmid'].value)),'comp_peri_epoch': comp_peri_epochs, 'a': float(np.nanmedian(query_planet['pl_orbsmax'].value)), 'e': float(np.nanmedian(query_planet['pl_orbeccen'].value))}
-    
-    # Save to cache file if requested
-    if cache_file is not None:
-        try:
-            # Convert param_dict to DataFrame with hostname and TIC ID
-            cache_data = []
-            for planet, params in param_dict.items():
-                row = {'hostname': hostname, 'tic_id': tic_id, 'planet_letter': planet}
-                row.update(params)
-                cache_data.append(row)
-            
-            cache_df = pd.DataFrame(cache_data)
-            
-            # Create directory if it doesn't exist
-            cache_dir = os.path.dirname(cache_file)
-            if cache_dir and not os.path.exists(cache_dir):
-                os.makedirs(cache_dir)
-            
-            # Save to CSV
-            cache_df.to_csv(cache_file, index=False)
-            print(f"✅ Planet parameters cached to: {cache_file}")
-            print(f"   Hostname: {hostname}, TIC ID: {tic_id}")
-        except Exception as e:
-            print(f"⚠️  Failed to save cache file {cache_file}. Error: {e}")
+                                       'omega_st': float(np.nanmedian(query_planet['pl_orblper'].value)),  'transit_epoch': float(np.nanmedian(query_planet['pl_tranmid'].value)),'comp_peri_epoch': comp_peri_epoch, 'a': float(np.nanmedian(query_planet['pl_orbsmax'].value)), 'e': float(np.nanmedian(query_planet['pl_orbeccen'].value))}
+    if len(param_dict) ==  0:
+        print(f"⚠️  No transit parameters found for {hostname}")
+    # Save to catalog
+    try:
+        catalog = Catalog()
+        catalog_name = 'Planet_Params.csv'
+        catalog_path = os.path.join(catalog.catalog_dir, catalog_name)
+        
+        cache_data = []
+        for planet, params in param_dict.items():
+            row = {'hostname': hostname, 'tic_id': tic_id, 'planet_letter': planet}
+            row.update(params)
+            cache_data.append(row)
+        
+        cache_df = pd.DataFrame(cache_data)
+        
+        # Append or create catalog
+        if os.path.exists(catalog_path):
+            existing_df = pd.read_csv(catalog_path)
+            planets_to_update = list(param_dict.keys())
+            # Remove old planet parameter entries for this host's planets
+            existing_df = existing_df[~((existing_df['hostname'] == hostname) & 
+                                       (existing_df['planet_letter'].isin(planets_to_update)))]
+            # Merge with existing data, preserving other columns
+            for idx, new_row in cache_df.iterrows():
+                matching_rows = existing_df[(existing_df['hostname'] == hostname) & 
+                                           (existing_df['planet_letter'] == new_row['planet_letter'])]
+                if len(matching_rows) > 0:
+                    # Update existing row
+                    for col in cache_df.columns:
+                        existing_df.loc[matching_rows.index[0], col] = new_row[col]
+                else:
+                    # Add new row
+                    existing_df = pd.concat([existing_df, pd.DataFrame([new_row])], ignore_index=True)
+            cache_df = existing_df
+        
+        cache_df.to_csv(catalog_path, index=False)
+    except Exception as e:
+        print(f"⚠️  Failed to save to catalog. Error: {e}")
     
     return param_dict
 
@@ -681,6 +988,3 @@ def MAST_data_extractor(input_dir):
                 shutil.move(src_file, dst_file)
             except (NotADirectoryError, FileExistsError):
                 continue
-
-
-Query_Host_Params('AU Mic', cache_file='/ugrad/whitsett.n/ardor/test_cache/Host_Params.csv')

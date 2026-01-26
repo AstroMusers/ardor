@@ -414,7 +414,7 @@ def return_phases(catalog, host_name, host_col_header = 'Host_ID',
     if TOI == True:
         planet_params = Query_Transit_Solution(host_name, table = 'toi')
     elif TOI == False:
-        planet_params = Query_Planet_Parameters(host_name, compute_epoch=True)
+        planet_params = Query_Planet_Parameters(host_name, compute_epoch=True, table = 'pscomppars')
     host_name = host_name.replace(' ', '')
     times = data.loc[data[host_col_header] == host_name, time_col_header].astype(float).to_numpy()
     phase_dict = {}
@@ -426,5 +426,28 @@ def return_phases(catalog, host_name, host_col_header = 'Host_ID',
         transit_phases = (((times - transit_epoch + period/2) % period) / period).tolist()
         peri_phases = (((times - peri_epoch+ period/2) % period) / period).tolist()
         comp_peri_phases = (((times - comp_peri_epoch + period/2) % period) / period).tolist()
-        phase_dict[str(planet)] = {'transit_phases': transit_phases, 'periastron_phases': peri_phases, 'computed_periastron_phases': comp_peri_phases}
+        if (1-planet_params[planet]['e'])*planet_params[planet]['a'] > 0.1:
+            continue
+        phase_dict[str(planet)] = {'transit_phases': transit_phases, 'periastron_phases': peri_phases, 'computed_periastron_phases': comp_peri_phases, 'epochs_BJD': times.tolist()}
     return phase_dict
+
+def delete_empty_dirs(root_dir):
+    """
+    Recursively delete all empty directories within the specified root directory.
+
+    Parameters
+    ----------
+    root_dir : str
+        The root directory to start searching for empty directories.
+
+    Returns
+    -------
+    None.
+
+    """
+    for dirpath, dirnames, filenames in os.walk(root_dir, topdown=False):
+        if not dirnames and not filenames:
+            os.rmdir(dirpath)
+            print(f"Deleted empty directory: {dirpath}")
+
+delete_empty_dirs('/ugrad/whitsett.n/ardor_test/Hosts/Tier2')
