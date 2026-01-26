@@ -1139,7 +1139,7 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
     }
     
     flare_count = 0
-    if csv or plot_flares:
+    if csv or graphics_tier2:
         os.makedirs(os.path.join(output_dir, str(host_name)), exist_ok=True)
     
     # Calculate median cadence for gap detection
