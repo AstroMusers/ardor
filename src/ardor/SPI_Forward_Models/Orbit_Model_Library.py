@@ -116,12 +116,12 @@ class Star:
             mass_loss_list = []
             for values in range(5000):
                 ##Uncertainty of 0.5
-                if self.age == None:
+                if self.age == None and B != None:
                     massloss_samp = (10**8.33)/(4.5e9**np.random.normal(2.33, scale=0.5))
                     while massloss_samp < 0:
                         massloss_samp = (10**8.33)/(4.5e9**np.random.normal(2.33, scale=0.5))
                     mass_loss_list.append(massloss_samp)
-                elif self.age != None:
+                elif self.age != None and B != None:
                     massloss_samp = (10**8.33)/(self.age**np.random.normal(2.33, scale=0.5))
                     while massloss_samp < 0:
                         massloss_samp = (10**8.33)/(self.age**np.random.normal(2.33, scale=0.5))

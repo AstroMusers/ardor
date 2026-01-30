@@ -161,18 +161,18 @@ def Query_Transit_Solution(identifier, table = "ps"):
         # Try to get data from catalog
         cached_data = catalog.get_host_data(catalog_name, hostname)
         
-        if cached_data is not None and len(cached_data) > 0 and 'pl_orbper' in cached_data.columns:
+        if cached_data is not None and len(cached_data) > 0 and 'period' in cached_data.columns:
             planets = cached_data['planet_letter'].unique().tolist()
-            periods = cached_data.groupby('planet_letter')['pl_orbper'].first().values
-            transit_mids = cached_data.groupby('planet_letter')['pl_tranmid'].first().values
-            durations = cached_data.groupby('planet_letter')['pl_trandur'].first().values
-            
+            periods = cached_data.groupby('planet_letter')['period'].first().values
+            transit_mids = cached_data.groupby('planet_letter')['transit_epoch'].first().values
+            durations = cached_data.groupby('planet_letter')['transit_duration'].first().values
             param_dict = {
                 'periods': np.array(periods),
                 'planets': planets,
                 'transit_mids': np.array(transit_mids),
                 'durations': np.array(durations)
             }
+            print(param_dict)
             return param_dict
     except (FileNotFoundError, KeyError, Exception) as e:
         print(f"ℹ️  Catalog not found or incomplete, querying astroquery... ({e})")
@@ -218,9 +218,9 @@ def Query_Transit_Solution(identifier, table = "ps"):
             row = {
                 'hostname': hostname,
                 'planet_letter': planet,
-                'pl_orbper': periods[idx],
-                'pl_tranmid': transit_mids[idx],
-                'pl_trandur': durations[idx]
+                'period': periods[idx],
+                'transit_epoch': transit_mids[idx],
+                'transit_duration': durations[idx]
             }
             cache_data.append(row)
         
@@ -776,6 +776,8 @@ def string_checker(identifier):
     if identifier.startswith("YZ") and ' ' not in identifier:
         identifier = "YZ Cet"
         return identifier
+    else:
+        return identifier
 
 def Query_Planet_Parameters(identifier, table = "ps", compute_epoch = False, cache_file = None):
     """
@@ -879,24 +881,6 @@ def Query_Planet_Parameters(identifier, table = "ps", compute_epoch = False, cac
     elif type(identifier) == str:
         identifier = string_checker(identifier)
         hostname = identifier
-        
-        # Query for TIC ID
-        try:
-            tic_query = nea.query_criteria(table=table, select="tic_id",
-                                           where=f"hostname like '{str(identifier)}'")
-            if len(tic_query) > 0:
-                tic_str = str(tic_query['tic_id'][0])
-                # Extract numeric part from "TIC XXXXXXX"
-                if 'TIC' in tic_str:
-                    tic_id = int(tic_str.split()[-1])
-                else:
-                    tic_id = None
-            else:
-                tic_id = None
-        except Exception as e:
-            print(f"⚠️  Could not query TIC ID for hostname {identifier}. Error: {e}")
-            tic_id = None
-        
         if compute_epoch == False:
             query = nea.query_criteria(table=table, select="pl_letter,pl_orbper,pl_orbtper,pl_orblper,pl_orbeccen,pl_orbsmax,pl_tranmid",
                                         where=f"hostname like '{str(identifier)}'")

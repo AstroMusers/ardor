@@ -231,37 +231,47 @@ def UBL_Sim_Kappa(DataFrame, output_dir, star=''):
 
 def SPI_Metric(period, e, a, phases, arg_periastron, Rst, t_tran = 0, transit = False, los_factor = 1, save_dir=None,
                plot = False):
-    '''
-    Returns an SPI metric for the provided orbit and PDF of the SPI model for
-    induced flares.
-
+    """
+    Calculate the Star-Planet Interaction (SPI) metric for flare phase distribution analysis.
+    This function computes a metric that quantifies the correlation between observed flare phases
+    and the expected orbital distance distribution, accounting for transit/eclipse exclusion zones.
     Parameters
     ----------
-    period: float
-        Period of the orbit, in daysa : float
-        Semi-major axis of the orbit, in AU
+    period : float
+        Orbital period of the system.
     e : float
-        Eccentricity of the orbit
+        Orbital eccentricity (0 <= e < 1).
     a : float
-        Semi-major axis of orbit, in AU
-    PDF : array-like
-        Probability density function of the flare model, in units of normalized
-        phase [0,1], with periastron at 0
+        Semi-major axis of the orbit.
+    phases : array-like
+        Array of observed flare phases (normalized 0-1).
     arg_periastron : float
-        Argument of periastron, in degrees
+        Argument of periastron in degrees.
     Rst : float
-        Radius of the star, in solar radii
-    los_factor : float
-        The line-of-sight factor for transiting planets when it is 
-        at superior conjunction. Adds a constant value to the line-of-sight
-        cone on either side of eclipse ingress and egress.
+        Stellar radius (converted internally using factor 0.00465047).
+    t_tran : float, optional
+        Transit time (default: 0). Currently unused in function.
+    transit : bool, optional
+        Whether to exclude transit/eclipse phases from the metric calculation (default: False).
+    los_factor : float, optional
+        Line-of-sight adjustment factor for transit window in degrees (default: 1).
+    save_dir : str, optional
+        Directory path to save the plot. If None, plot is not saved (default: None).
+    plot : bool, optional
+        Whether to generate and display a diagnostic plot (default: False).
     Returns
     -------
-    SPI_Metric: Positive values indicate the empirical PDF supports SPIs. 
-    Negative values indicate the empirical PDF goes against the SPI model.
-    A result of 0 indicates the same evidence as uniform flaring.
-
-    '''
+    float
+        The SPI metric (beta), representing the excess probability of flares occurring
+        at phases with closer orbital distances, relative to a uniform distribution.
+    Notes
+    -----
+    - Phases are automatically wrapped to [0, 1] range
+    - Uses von Mises distribution to model the phase distribution
+    - The metric is computed as: beta = integral(PDF * r_norm) - integral(PDF * 1)
+    - Positive beta values indicate flares preferentially occur at closer distances
+    - If transit=True, phases within the line-of-sight window are excluded from orbital weighting
+    """
     phases = U.boundary_conditions(phases, 0, 1)
     Rst = Rst*0.00465047
     arg_periastron = U.boundary_conditions(arg_periastron + 180, 0, 360)
@@ -297,11 +307,9 @@ def SPI_Metric(period, e, a, phases, arg_periastron, Rst, t_tran = 0, transit = 
             elif b < a:
                 if values < b or values > a:
                     norm_orbit[idx] = 0
-    normalized = norm_orbit/simpson(norm_orbit, x=phase)
-    ones = np.ones(len(PDF))
-    SPI_Metric = simpson((PDF * (normalized)), x = phase)
-    int_b = simpson((PDF * (ones)), x = phase)
-    beta = SPI_Metric - int_b
+    normalized = norm_orbit/simpson(norm_orbit, x=np.linspace(0,1,num=len(norm_orbit)))
+    SPI_Metric = simpson((PDF * (normalized)), x = np.linspace(0,1,num=len(normalized)))
+    beta = SPI_Metric - 1
     if plot == True:
         fig, ax = plt.subplots(figsize=(4,4))
         ax.hist(phases, bins=np.linspace(0, 1, num=12),

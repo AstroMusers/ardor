@@ -252,10 +252,13 @@ def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, omega_p = 0, title = "Ti
         ax.plot(phases, orbit, linestyle='-', color='black', linewidth=1.25, label = 'Orbit')
     
     # Calculate appropriate plot limits based on orbit size and scale marker
-    max_orbit_radius = np.max(orbit)
-    scale_marker_max = scale_length * 1.41414 if scale else 0
-    plot_max = max(max_orbit_radius * 1.2, scale_marker_max * 1.1)
-    ax.set_rlim(0, plot_max)
+    if scale:
+        max_orbit_radius = np.max(orbit)
+        scale_marker_max = scale_length * 1.41414 if scale else 0
+        plot_max = max(max_orbit_radius * 1.2, scale_marker_max * 1.1)
+        ax.set_rlim(0, plot_max)
+    else:
+        ax.set_rlim(0, 0.1)
     ax.set_yticks([])
     ax.set_yticklabels([])
     ax.set_xticks([])

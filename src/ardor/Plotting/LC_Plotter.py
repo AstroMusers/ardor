@@ -128,8 +128,11 @@ def plot_flares_from_catalog(csv_file, host_id, fits_dir, flare_lengths=None,
         List of flare lengths (in number of data points) for each flare.
         If provided, highlights subsequent data points after the flare peak.
         Must be the same length as the number of flares for the host. Default is None.
-    window_points : int, optional
+    window_points : int or list, optional
         Number of data points to show before and after the flare center (±window_points).
+        Can be either:
+        - int: Same window size for all flares (e.g., 50)
+        - list: Individual window size for each flare (must match number of flares)
         Default is 50.
     output_file : str or None, optional
         If provided, saves the plot to this file path. For multi-page plots, 
@@ -179,6 +182,7 @@ def plot_flares_from_catalog(csv_file, host_id, fits_dir, flare_lengths=None,
         catalog = catalog.sort_values('#').reset_index(drop=True)
 
     # Convert to numeric
+    catalog.sort_values(by='Epoch_BJD', inplace=True)
     catalog['Epoch_BJD'] = pd.to_numeric(catalog['Epoch_BJD'], errors='coerce')
     catalog['FWHM'] = pd.to_numeric(catalog['FWHM'], errors='coerce')
     catalog['Amplitude'] = pd.to_numeric(catalog['Amplitude'], errors='coerce')
@@ -213,6 +217,16 @@ def plot_flares_from_catalog(csv_file, host_id, fits_dir, flare_lengths=None,
         dlogz_values = None
     
     n_flares = len(flare_epochs)
+    
+    # Validate and normalize window_points
+    if isinstance(window_points, (list, np.ndarray)):
+        if len(window_points) != n_flares:
+            raise ValueError(f"window_points list must have {n_flares} elements (one per flare), "
+                           f"but got {len(window_points)}.")
+        window_points_list = list(window_points)
+    else:
+        # Single value - use for all flares
+        window_points_list = [window_points] * n_flares
     
     # Validate flare_lengths if provided
     if flare_lengths is not None:
@@ -354,6 +368,7 @@ def plot_flares_from_catalog(csv_file, host_id, fits_dir, flare_lengths=None,
         page_fwhm_values = fwhm_values[start_flare:end_flare] if fwhm_values is not None else None
         page_dlogz_values = dlogz_values[start_flare:end_flare] if dlogz_values is not None else None
         page_flare_lengths = flare_lengths[start_flare:end_flare] if flare_lengths is not None else None
+        page_window_points = window_points_list[start_flare:end_flare]  # Get window points for this page
         
         # Calculate grid layout for this page
         n_cols = min(3, page_flares)  # Maximum 3 columns
@@ -386,6 +401,7 @@ def plot_flares_from_catalog(csv_file, host_id, fits_dir, flare_lengths=None,
         # Plot each flare on this page
         for i, (epoch, ax) in enumerate(zip(page_epochs, axes[:page_flares])):
             global_flare_num = start_flare + i + 1  # Global flare number
+            current_window_points = page_window_points[i]  # Get window size for this specific flare
         
             # Filter data based on cadence_list if provided
             if cadence_list is not None:
@@ -412,9 +428,9 @@ def plot_flares_from_catalog(csv_file, host_id, fits_dir, flare_lengths=None,
             
             # Find data points closest to the flare epoch in filtered data
             center_idx = find_nearest(filtered_time, epoch)
-            # Define window around flare
-            start_idx = max(0, center_idx - window_points)
-            end_idx = min(len(filtered_time), center_idx + window_points + 1)
+            # Define window around flare using the flare-specific window size
+            start_idx = max(0, center_idx - current_window_points)
+            end_idx = min(len(filtered_time), center_idx + current_window_points + 1)
             
             # Extract window data
             time_window = filtered_time[start_idx:end_idx]
@@ -481,7 +497,7 @@ def plot_flares_from_catalog(csv_file, host_id, fits_dir, flare_lengths=None,
             
             center_flux = filtered_flux[peak_idx]
             
-            ax.plot(filtered_time[peak_idx], center_flux, marker='D', markersize=6, 
+            ax.plot(filtered_time[peak_idx], center_flux, marker='D', markersize=3, 
                     color='orange', label='Flare Peak', zorder=5)
             
             # Use amplitude from catalog if available, otherwise calculate from flux

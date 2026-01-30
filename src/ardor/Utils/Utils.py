@@ -389,7 +389,7 @@ def remove_duplicates(catalog_file, host_col_header='Host_ID', time_col_header='
     return cleaned_catalog
 
 def return_phases(catalog, host_name, host_col_header = 'Host_ID', 
-                  time_col_header = 'Epoch_BJD', TOI = False):
+                  time_col_header = 'Epoch_BJD', TOI = False, table = 'pscomppars', energy_threshold = 1e34):
     '''
     Return phases of flares for a given host.
 
@@ -403,20 +403,21 @@ def return_phases(catalog, host_name, host_col_header = 'Host_ID',
         Column header for host names. The default is 'Host_ID'.
     time_col_header : str, optional
         Column header for flare times. The default is 'Epoch_BJD'.
-    Returns
+    energy_threshold : float, optional
+        Minimum energy threshold for flares to be considered. The default is 1e34.
     -------
     phases : dict
         Returns a dictrionary of phases for each planet around the host. The keys are the planet names, and the values are another dictionary with keys 
         'transit_phases', 'periastron_phases', and 'computed_periastron_phases', each containing a list of phases corresponding to the flare times.
 
     '''
-    data = pd.read_csv(catalog)
+    data = pd.read_csv(catalog, skiprows=[1])
     if TOI == True:
         planet_params = Query_Transit_Solution(host_name, table = 'toi')
     elif TOI == False:
-        planet_params = Query_Planet_Parameters(host_name, compute_epoch=True, table = 'pscomppars')
+        planet_params = Query_Planet_Parameters(host_name, compute_epoch=True, table = table)
     host_name = host_name.replace(' ', '')
-    times = data.loc[data[host_col_header] == host_name, time_col_header].astype(float).to_numpy()
+    times = data.loc[(data[host_col_header] == host_name) & (data['Energy'] > energy_threshold), time_col_header].astype(float).to_numpy()
     phase_dict = {}
     for idx, planet in enumerate(planet_params.keys()):
         period = planet_params[planet]['period']

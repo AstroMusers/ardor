@@ -146,7 +146,7 @@ def K_Test_Sim_Kappa(DataFrame, output_dir, descriptor='G'):
     
 
 def K_Tests(phases, KS = True, KU = True, AD = True, sampling = True,
-            N = 10, sample_type = [1], peri_error = None, output_message = True, return_phases = False):
+            N = 10, output_message = True):
     '''
     Generates test statistics for different GoF tests to test if the provided
     flare epoch distribution deviates significantly from a uniform distribution.
@@ -196,6 +196,7 @@ def K_Tests(phases, KS = True, KU = True, AD = True, sampling = True,
     message_str = 'Output Order\n'
     idx_counter = 0
     phases = np.sort(phases)
+    K_sampled = []
     if len(phases) >= 3 and np.isnan(phases[0]) == False:
         if KS == True:
             idx_counter += 1
@@ -212,12 +213,30 @@ def K_Tests(phases, KS = True, KU = True, AD = True, sampling = True,
             A, p_AD = ad_test(phases, uniform(0,1), assume_sorted=True)
             K_tests.append(p_AD)
             message_str += str(idx_counter) + ' AD\n'
-        if output_message == True:
-            print(message_str)
-        if return_phases == False:
-            return K_tests
-        elif return_phases == True:
-            return K_tests
-    else:
-        return None, None, None
+        if sampling == True:
+            phase_offset = np.linspace(0, 1, N+1)
+            KS_samples = []
+            AD_samples = []
+            for offset in phase_offset:
+                phases_sampled = (phases + offset) % 1
+                phases_sampled = np.sort(phases_sampled)
+                if KS == True:
+                    D, p_KS = ks_1samp(phases_sampled, uniform.cdf, args=(0, 1))
+                    KS_samples.append(p_KS)
+                    message_str += str(idx_counter) + ' KS Sampled\n'
+                if AD == True:
+                    idx_counter += 1
+                    A, p_AD = ad_test(phases_sampled, uniform(0,1), assume_sorted=True)
+                    AD_samples.append(p_AD)
+                    message_str += str(idx_counter) + ' AD Sampled\n'
+            if KS == True:
+                K_sampled.append(np.median(KS_samples))
+            if AD == True:
+                K_sampled.append(np.median(AD_samples))
+    if output_message == True:
+        print(message_str)
+    if sampling == True:
+        return K_tests, K_sampled
+    elif sampling == False:
+        return K_tests
         
