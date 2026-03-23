@@ -95,3 +95,20 @@ def aflare1(t, tpeak, fwhm, ampl):
                             ) * np.abs(ampl) # amplitude
 
     return flare
+
+def flare_total_area(fwhm, ampl):
+    # Polynomial rise coefficients
+    _fr = np.array([1.00000, 1.94053, -0.175084, -2.24588, -1.12498])
+    # Exponential decay coefficients
+    _fd = np.array([0.689008, -1.60053, 0.302963, -0.278318])
+
+    # Rise integral: sum_{n=0}^{4} f_r,n * (-1)^{n+1} / (n+1)
+    rise_integral = np.sum([_fr[n] * (-1)**(n+1) / (n+1) for n in range(5)])
+
+    # Decay integral: -f_d[0]/f_d[1] - f_d[2]/f_d[3]
+    decay_integral = -_fd[0]/_fd[1] - _fd[2]/_fd[3]
+
+    # Total area = FWHM * amplitude * (rise + decay)
+    total_area = ampl * fwhm * (rise_integral + decay_integral)
+    
+    return total_area
