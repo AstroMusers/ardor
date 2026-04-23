@@ -65,13 +65,16 @@ def place_column_text(ax, text, xy, wrap_n, shift, bbox=False, **kwargs):
         rect = mpatches.FancyBboxPatch(xy=(x,fancypatch_y), width=width, height=max_height, **kwargs)
         ax.add_patch(rect)
 
-def TESS_data_extract_local(fits_lc_file, PDCSAP_ERR=True, apply_quality_filter=True):
+def TESS_data_extract_local(fits_lc_file, flux_type='pdcsap', apply_quality_filter=True):
     """
     Extract time and PDCSAP_FLUX from a TESS light curve FITS file.
     
     This is a local version to avoid importing the full ardor.Flares.Flare module.
     """
-    lc = lk.read(fits_lc_file, flux_column='pdcsap_flux').remove_nans()
+    if flux_type == 'pdcsap':
+        lc = lk.read(fits_lc_file, flux_column='pdcsap_flux').remove_nans()
+    elif flux_type == 'sap':
+        lc = lk.read(fits_lc_file, flux_column='sap_flux').remove_nans()
     
     # Print diagnostic information about data filtering
     
@@ -96,12 +99,8 @@ def TESS_data_extract_local(fits_lc_file, PDCSAP_ERR=True, apply_quality_filter=
     flux_values = flux.value
     error_values = error.value
     
-    if PDCSAP_ERR:
-        LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'error'])
-        lc_out = LightCurve(time_values, flux_values, error_values)
-    else:
-        LightCurve = c.namedtuple('LightCurve', ['time', 'flux'])
-        lc_out = LightCurve(time_values, flux_values)
+    LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'error'])
+    lc_out = LightCurve(time_values, flux_values, error_values)
     
     return lc_out
 
@@ -109,7 +108,8 @@ def TESS_data_extract_local(fits_lc_file, PDCSAP_ERR=True, apply_quality_filter=
 def plot_flares_from_catalog(csv_file, host_id, fits_dir, flare_lengths=None, 
                               window_points=50, output_file=None, plot_title=None,
                               max_flares_per_page=30, apply_quality_filter=True, 
-                              fast = False, plot_both_cadences=False, cadence_list=None):
+                              fast = False, plot_both_cadences=False, cadence_list=None
+                              , flux_type='pdcsap'):
     """
     Plot flares from a CSV catalog centered on flare events.
     
@@ -308,7 +308,7 @@ def plot_flares_from_catalog(csv_file, host_id, fits_dir, flare_lengths=None,
     
     for fits_file in fits_files_to_use:
         try:
-            lc = TESS_data_extract_local(fits_file, PDCSAP_ERR=True, apply_quality_filter=apply_quality_filter)
+            lc = TESS_data_extract_local(fits_file, flux_type=flux_type, apply_quality_filter=apply_quality_filter)
             is_fast_file = fits_file.endswith('a_fast-lc.fits')
             
             all_time.extend(lc.time)
