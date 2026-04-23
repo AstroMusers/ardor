@@ -233,9 +233,7 @@ def detrend_segments(segments, poly_order=2, sigma_clip=3, max_iter=5):
 
 
 def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatten_non_transits=True,
-                          window_length=401, analyze_periodic_trend=False,
-                          periodogram_min_frequency=1/100, periodogram_max_frequency=1/0.5,
-                          periodogram_samples_per_peak=5):
+                          window_length=401):
     """
     Reconstruct a full light curve by combining detrended non-transit data with detrended transit segments.
     
@@ -251,20 +249,6 @@ def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatte
         Whether to flatten/detrend the non-transit portions (default: True)
     window_length : int, optional
         Window length for flattening non-transit data (default: 401)
-    analyze_periodic_trend : bool, optional
-        If True, compute a Lomb-Scargle periodogram of the non-transit trend
-        (or non-transit flux if flatten_non_transits=False). Default is False.
-    periodogram_min_frequency : float, optional
-        Minimum frequency for Lomb-Scargle autopower. If None, astropy chooses
-        a default based on the time sampling.
-    periodogram_max_frequency : float, optional
-        Maximum frequency for Lomb-Scargle autopower. If None, astropy chooses
-        a default based on the time sampling.
-    periodogram_samples_per_peak : int, optional
-        Samples per peak for Lomb-Scargle autopower (default: 5).
-    return_periodogram : bool, optional
-        If True, return a third object with periodogram diagnostics.
-        Default is False.
     
     Returns
     -------
@@ -273,10 +257,6 @@ def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatte
     trend : lightkurve.LightCurve or None
         Trend model returned by lightkurve flatten when flatten_non_transits=True.
         Otherwise None.
-    periodogram_results : dict or None, optional
-        Returned only when return_periodogram=True. Contains keys:
-        'frequency', 'power', 'best_frequency', 'best_period',
-        'false_alarm_probability', 'signal_type'.
     """
     # Start with the original light curve arrays - ensure regular numpy arrays
     reconstructed_flux = np.asarray(original_lc.flux)
@@ -317,73 +297,12 @@ def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatte
             adjusted_flux = seg_detrended_flux[i] - np.median(seg_detrended_flux) + non_transit_median
             
             reconstructed_flux[idx] = adjusted_flux
-    
-    # Optionally analyze periodicity of the trend signal using Lomb-Scargle
-    periodogram_results = None
-    if analyze_periodic_trend:
-        ls_time = np.asarray(lc_no_transits.time.value)
-        ls_signal = np.asarray(lc_no_transits.flux)
-        signal_type = 'non_transit_flux'
-
-        valid = np.isfinite(ls_time) & np.isfinite(ls_signal)
-        ls_time = ls_time[valid]
-        ls_signal = ls_signal[valid]
-
-        if len(ls_time) > 5 and np.std(ls_signal) > 0:
-            lomb_scargle = LS(ls_time, ls_signal)
-
-            min_freq = periodogram_min_frequency
-            max_freq = periodogram_max_frequency
-            if min_freq is not None and max_freq is not None and min_freq >= max_freq:
-                min_freq, max_freq = max_freq, min_freq
-
-            frequency, power = lomb_scargle.autopower(
-                minimum_frequency=min_freq,
-                maximum_frequency=max_freq,
-                samples_per_peak=periodogram_samples_per_peak
-            )
-
-            frequency = np.asarray(frequency)
-            power = np.asarray(power)
-
-            if len(power) > 0:
-                best_idx = np.argmax(power)
-                best_frequency = frequency[best_idx]
-                best_period = 1 / best_frequency if best_frequency > 0 else np.nan
-                false_alarm_probability = lomb_scargle.false_alarm_probability(power[best_idx])
-            else:
-                best_frequency = np.nan
-                best_period = np.nan
-                false_alarm_probability = np.nan
-
-            periodogram_results = {
-                'frequency': frequency,
-                'power': power,
-                'best_frequency': best_frequency,
-                'best_period': best_period,
-                'false_alarm_probability': false_alarm_probability,
-                'signal_type': signal_type
-            }
-        else:
-            periodogram_results = {
-                'frequency': np.array([]),
-                'power': np.array([]),
-                'best_frequency': np.nan,
-                'best_period': np.nan,
-                'false_alarm_probability': np.nan,
-                'signal_type': signal_type
-            }
-
     # Create the reconstructed light curve - ensure all inputs are regular numpy arrays
     reconstructed_lc = lk.LightCurve(
         time=reconstructed_time,
         flux=reconstructed_flux,
         flux_err=reconstructed_error
     )
-
-    if analyze_periodic_trend:
-        return reconstructed_lc, trend, periodogram_results
-    return reconstructed_lc, trend, None
 
 
 def plot_transit_detrending(original_lc, mask, transit_segments, detrended_segments, 
