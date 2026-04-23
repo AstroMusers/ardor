@@ -709,13 +709,3 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,ou
         df['y-1'] = y_err1[0]
         df['y+1'] = y_err1[1]
         df.to_csv(output_dir, index = None)
-
-# Injection_Recovery('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop', old = True)
-# Injection_Recovery('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop', old = False)
-# Injection_Recovery_Grid('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Injection_Recovery_T1_Old.csv', 
-#                         'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop',
-#                         label = 'T1', energy = False)
-# Precision_Recall('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_LC', 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20], old = True)
-# Precision_Recall('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_LC', 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20], old = True)
-
-# Precision_Recall_Data_Processing('C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR/Precision_Recall_T1_Old.csv','C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/M_Type_IR/Precision_Recall_T2_Old.csv', [2, 2.5, 3, 3.5, 4, 4.5, 5], [1, 2, 5, 7.5, 10, 15, 20], 'C:/Users/whitsett.n/OneDrive - Washington University in St. Louis/Desktop/Research/Induced_Flares/Injection Tests/G_Type_IR/Precision_Recall_T1_Old.csv', tier = 'T1')
