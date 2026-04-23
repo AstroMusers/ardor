@@ -60,8 +60,60 @@ def clear_workingdir(working_dir):
         file_path = os.path.join(working_dir, 'results', file_name)
         os.remove(file_path)
 
-def flare_energy(params, Teff, R_stellar, uncertainty = False, param_lower = [0,0,0], param_upper = [0,0,0], Teff_unc=[0,0],
+def flare_energy(params, Teff, R_stellar, uncertainty = False, param_lower = [0,0], param_upper = [0,0], Teff_unc=[0,0],
                  R_unc = [0,0], N = 1, N_samp = 1000):
+    '''
+    Estimate the bolometric energy released by one or more flare components.
+
+    The flare light-curve model is evaluated on a fixed time grid using
+    ``aflare.aflare``, integrated with Simpson's rule, and scaled by the
+    stellar radius and a blackbody color correction between the stellar
+    effective temperature and an assumed flare temperature.
+
+    Parameters
+    ----------
+    params : list or numpy.ndarray
+        Flattened flare parameter list in groups of three values per flare:
+        ``[tpeak, fwhm, amplitude, ...]``. The total length must be ``3 * N``.
+    Teff : float
+        Stellar effective temperature in Kelvin.
+    R_stellar : float
+        Stellar radius in solar radii.
+    uncertainty : bool, optional
+        If ``False``, return a single energy estimate. If ``True``, propagate
+        parameter, stellar radius, stellar temperature, and flare temperature
+        uncertainties through Monte Carlo sampling.
+    param_lower : list, optional
+        Lower uncertainties for the flare shape parameters used when
+        ``uncertainty`` is ``True``.
+    param_upper : list, optional
+        Upper uncertainties for the flare shape parameters used when
+        ``uncertainty`` is ``True``.
+    Teff_unc : list, optional
+        Lower and upper uncertainties on ``Teff``.
+    R_unc : list, optional
+        Lower and upper uncertainties on ``R_stellar``.
+    N : int, optional
+        Number of flare components represented in ``params``. The uncertainty
+        sampling branch currently handles explicit cases for ``N`` equal to 1,
+        2, or 3.
+    N_samp : int, optional
+        Number of Monte Carlo samples to draw when ``uncertainty`` is ``True``.
+
+    Returns
+    -------
+    float or tuple
+        If ``uncertainty`` is ``False``, returns the flare energy in erg. If
+        ``uncertainty`` is ``True``, returns ``(energy, lower_error,
+        upper_error)``, where the errors are estimated from the sampled energy
+        distribution.
+
+    Raises
+    ------
+    ValueError
+        If the length of ``params`` does not match ``3 * N``.
+    '''
+
     if len(params) != 3*N:
         raise ValueError("Parameter length does not match number of flares.")
     for flares in range(N):
@@ -83,10 +135,11 @@ def flare_energy(params, Teff, R_stellar, uncertainty = False, param_lower = [0,
                 if N == 1:
                     R_stellar_sample = asymmetric_sample(R_stellar, R_unc[0], R_unc[1])
                     Teff_sample = asymmetric_sample(Teff, Teff_unc[0], Teff_unc[1])
-                    fwhm_sample = asymmetric_sample(params[1], param_upper[0], param_lower[0])
-                    ampl_sample = asymmetric_sample(params[2], param_upper[1], param_lower[1])
+                    fwhm_sample = np.abs(asymmetric_sample(params[1], param_upper[0], param_lower[0]))
+                    ampl_sample = np.abs(asymmetric_sample(params[2], param_upper[1], param_lower[1]))
                     y = aflare.aflare(x, [params[0], fwhm_sample, ampl_sample])
                     flare_temp = np.random.normal(loc=9000, scale=500)
+                    flare_area = simpson(y, x)
                     color_factor = planck_integrator(600e-6, 1000e-6, Teff_sample)/planck_integrator(600e-6, 1000e-6, flare_temp)
                     energy_sample = (5.67e-8)*(flare_temp**4)*(flare_area)*np.pi*(R_stellar_sample*6.957e8*R_stellar_sample*6.957e8)*color_factor*(1e7)*86400
                     samples.append(energy_sample)
@@ -309,7 +362,7 @@ def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spli
         ## If change in Bayes Factor >= 5, continue to next model
         if idx == 2:
             construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
-                                 peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors)
+                                 peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors, amp_guess=amp_guess)
             construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num, ns_tol=0.1, cores=NS_CPUS)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             allesfitter.ns_fit(working_dir)
@@ -332,7 +385,7 @@ def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spli
                 return params, (log_Z2 - log_Z1), 2
         if idx == 3:
             construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
-                                 peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors)
+                                 peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors, amp_guess=amp_guess)
             construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num, ns_tol=0.1, cores=NS_CPUS)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
             allesfitter.ns_fit(working_dir)
@@ -372,7 +425,7 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
             if N == 1:
                 param_names = ['flare_tpeak_1', 'flare_fwhm_1', 'flare_ampl_1']
                 best_guess = [0, 0.01, amp_guess]
-                priors = [f'uniform -0.04 0.04', 'uniform 0 0.05', f'uniform {amp_guess*0.99} {amp_guess*2}']
+                priors = [f'uniform -0.01 0.01', 'uniform 0 0.05', f'uniform {amp_guess*1/2} {amp_guess*2}']
                 labels = ['Flare_Time', 'Flare_FWHM', 'Flare_Amp.']
                 units = ['days', 'days', 'rel. flux']
             elif N == 2:
@@ -380,8 +433,8 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
                             'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2']
                 try:
                     best_guess = [peak_time_best_guess[0], 0.01, amp_guess, peak_time_best_guess[1], 0.01, amp_guess]
-                    priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.05', f'uniform 0 {amp_guess*2}', 
-                                f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.05', f'uniform 0 {amp_guess*2}']
+                    priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.05', f'uniform {amp_guess*1/2} {amp_guess*2}', 
+                                f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.05', f'uniform {amp_guess*1/2} {amp_guess*2}']
                     labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
                                 'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
                     units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
@@ -408,8 +461,8 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
         if baseline == 'sample_GP_Matern32':
             param_names += [f'ln_err_flux_{name}', f'baseline_gp_offset_flux_{name}', f'baseline_gp_matern32_lnsigma_flux_{name}', 
                             f'baseline_gp_matern32_lnrho_flux_{name}']
-            best_guess += [-7,0,-8, -4]
-            priors += ['uniform -10 -2', 'uniform -0.02 0.02', 'uniform -11.5 -4.6', 'uniform -6 -3']
+            best_guess += [-7,0,-8, -1]
+            priors += ['uniform -10 -2', 'uniform -0.02 0.02', 'uniform -9.5 -7', 'uniform -3 0.5']
             labels += [f'ln_err_flux_{name}', rf'GP_Matern32_Baseline_{name}', rf'GP_Matern32_ln$sigma$_{name}', 
                     rf'GP_Matern32_ln$rho$_{name}']
             units += ['rel. flux', 'rel. flux', '', '']
