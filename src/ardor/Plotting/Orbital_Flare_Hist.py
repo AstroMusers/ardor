@@ -256,7 +256,7 @@ def Polar_Flare_Plot(flare_phases, e = 0.01, a = 0.065, omega_p = 0, title = "Ti
         max_orbit_radius = np.max(orbit)
         scale_marker_max = scale_length * 1.41414 if scale else 0
         plot_max = max(max_orbit_radius * 1.2, scale_marker_max * 1.1)
-        ax.set_rlim(0, plot_max)
+        ax.set_rlim(0, 0.1)
     else:
         ax.set_rlim(0, 0.1)
     ax.set_yticks([])
