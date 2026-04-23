@@ -356,25 +356,55 @@ def Query_Host_Params(identifier, table = "pscomppars", cache_file=None):
         raise ValueError("Identifier must be a string (hostname) or numeric (TIC ID).")
     
     if table == 'pscomppars':
-        Teff = float(query['st_teff'][0].value)
-        Teff_u = float(query['st_tefferr1'][0].value)
-        Teff_l = float(query['st_tefferr2'][0].value)
-        st_rad = float(query['st_rad'][0].value)
-        st_rad_u = float(query['st_raderr1'][0].value)
-        st_rad_l = float(query['st_raderr2'][0].value)
-        st_mass = float(query['st_mass'][0].value)
-        st_mass_u = float(query['st_masserr1'][0].value)
-        st_mass_l = float(query['st_masserr2'][0].value)
+        try:
+            Teff = float(query['st_teff'][0].value)
+            Teff_u = float(query['st_tefferr1'][0].value)
+            Teff_l = float(query['st_tefferr2'][0].value)
+        except IndexError:
+            Teff = np.nan
+            Teff_u = np.nan
+            Teff_l = np.nan
+        try:
+            st_rad = float(query['st_rad'][0].value)
+            st_rad_u = float(query['st_raderr1'][0].value)
+            st_rad_l = float(query['st_raderr2'][0].value)
+        except IndexError:
+            st_rad = np.nan
+            st_rad_u = np.nan
+            st_rad_l = np.nan
+        try:
+            st_mass = float(query['st_mass'][0].value)
+            st_mass_u = float(query['st_masserr1'][0].value)
+            st_mass_l = float(query['st_masserr2'][0].value)
+        except IndexError:
+            st_mass = np.nan
+            st_mass_u = np.nan
+            st_mass_l = np.nan
     elif table == 'ps':
-        Teff = float(np.nanmedian(query['st_teff'].value))
-        Teff_u = float(np.nanmax(query['st_tefferr1'].value))
-        Teff_l = float(np.nanmax(query['st_tefferr2'].value))
-        st_rad = float(np.nanmax(query['st_rad'].value))
-        st_rad_u = float(np.nanmax(query['st_raderr1'].value))
-        st_rad_l = float(np.nanmax(query['st_raderr2'].value))
-        st_mass = float(np.nanmedian(query['st_mass'].value))
-        st_mass_u = float(np.nanmax(query['st_masserr1'].value))
-        st_mass_l = float(np.nanmax(query['st_masserr2'].value))
+        try:
+            Teff = float(np.nanmedian(query['st_teff'].value))
+            Teff_u = float(np.nanmax(query['st_tefferr1'].value))
+            Teff_l = float(np.nanmax(query['st_tefferr2'].value))
+        except IndexError:
+            Teff = np.nan
+            Teff_u = np.nan
+            Teff_l = np.nan
+        try:
+            st_rad = float(np.nanmax(query['st_rad'].value))
+            st_rad_u = float(np.nanmax(query['st_raderr1'].value))
+            st_rad_l = float(np.nanmax(query['st_raderr2'].value))
+        except IndexError:
+            st_rad = np.nan
+            st_rad_u = np.nan
+            st_rad_l = np.nan
+        try:
+            st_mass = float(np.nanmedian(query['st_mass'].value))
+            st_mass_u = float(np.nanmax(query['st_masserr1'].value))
+            st_mass_l = float(np.nanmax(query['st_masserr2'].value))
+        except IndexError:
+            st_mass = np.nan
+            st_mass_u = np.nan
+            st_mass_l = np.nan
     
     # Save to cache file if requested
     if cache_file is not None:
@@ -475,7 +505,10 @@ def Query_Host_Params_TOI(identifier, cache_file=None):
     """
     
     # Try to load from catalog first
-    toi_id = int(identifier)
+    try:
+        toi_id = int(identifier)
+    except (TypeError, ValueError) as e:
+        raise ValueError("Identifier must be the TOI ID as an integer.") from e
     try:
         catalog = Catalog()
         catalog_name = 'Host_Params_TOI.csv'
@@ -495,13 +528,15 @@ def Query_Host_Params_TOI(identifier, cache_file=None):
         print(f"ℹ️  Catalog not found or incomplete, querying astroquery... ({e})")
     
     try:
-        query = nea.query_criteria(table="toi", select="st_teff,st_rad,st_tefferr1,st_raderr1,st_tefferr2,st_raderr2,hostname",
-                                    where=f"toipfx='{str(int(identifier))}'")
-    except:
-        raise ValueError("Identifier must be the TOI ID as an integer.")
-    
-    toi_id = int(identifier)
-    hostname = str(query['hostname'][0]) if 'hostname' in query.colnames and len(query) > 0 else f"TOI {toi_id}"
+        query = nea.query_criteria(
+            table="toi",
+            select="st_teff,st_rad,st_tefferr1,st_raderr1,st_tefferr2,st_raderr2",
+            where=f"toipfx='{toi_id}'"
+        )
+    except Exception as e:
+        raise RuntimeError(f"TOI archive query failed for TOI {toi_id}: {e}") from e
+
+    hostname = f"TOI {toi_id}"
     
     Teff = float(query['st_teff'][0].value)
     Teff_u = float(query['st_tefferr1'][0].value)
