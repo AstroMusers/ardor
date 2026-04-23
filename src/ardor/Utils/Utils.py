@@ -325,7 +325,8 @@ def copy_output(work_dir, files_to_copy, destination_dir):
         else:
             print(f'File {file_name} does not exist in {work_dir}. Skipping.')
 
-def remove_duplicates(catalog_file, host_col_header='Host_ID', time_col_header='Epoch_BJD'):
+def remove_duplicates(catalog_file, host_col_header='Host_ID', time_col_header='Epoch_BJD',
+                      time_threshold_days = 10 / (24 * 60)):
     '''
     Identify and remove flares that occur within 10 minutes of each other in a catalog.
     Creates a new CSV file with duplicates removed.
@@ -347,9 +348,13 @@ def remove_duplicates(catalog_file, host_col_header='Host_ID', time_col_header='
     '''
     # Read the catalog
     catalog = pd.read_csv(catalog_file)
+
+    # Ensure time column is numeric for arithmetic comparisons
+    if time_col_header not in catalog.columns:
+        raise KeyError(f"Column '{time_col_header}' not found in catalog: {catalog_file}")
+    catalog[time_col_header] = pd.to_numeric(catalog[time_col_header], errors='coerce')
     
     # Convert 10 minutes to days (10 minutes / (24 hours * 60 minutes))
-    time_threshold_days = 10 / (24 * 60)
     
     # Initialize duplicate_flag column
     catalog['duplicate_flag'] = False
@@ -363,7 +368,9 @@ def remove_duplicates(catalog_file, host_col_header='Host_ID', time_col_header='
         
         if len(host_indices) > 0:
             # Sort indices by time
-            sorted_indices = catalog.loc[host_indices].sort_values(by=time_col_header).index
+            host_data = catalog.loc[host_indices].copy()
+            host_data = host_data.dropna(subset=[time_col_header])
+            sorted_indices = host_data.sort_values(by=time_col_header).index
             
             # Check each flare against the previous one
             for i in range(1, len(sorted_indices)):
@@ -450,5 +457,3 @@ def delete_empty_dirs(root_dir):
         if not dirnames and not filenames:
             os.rmdir(dirpath)
             print(f"Deleted empty directory: {dirpath}")
-
-delete_empty_dirs('/ugrad/whitsett.n/ardor_test/Hosts/Tier2')
