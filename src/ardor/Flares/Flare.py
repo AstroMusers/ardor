@@ -13,6 +13,7 @@ from scipy.stats import linregress
 import numpy as np
 import pandas as pd
 import os
+import traceback
 from ardor.Flares import aflare
 import ardor.SPI_Forward_Models.SPI_Simulation as SPI
 import copy
@@ -23,6 +24,14 @@ import collections as c
 from matplotlib import pyplot as plt
 import re
 from pycheops import Dataset
+
+def _extract_flare_number(filename):
+    match = re.search(r'Flare_(\d+)', filename)
+    return int(match.group(1)) if match else None
+
+def _extract_sector(filename):
+    match = re.search(r'^S(\d+)', filename)
+    return int(match.group(1)) if match else None
 ## Mathematical Functions and Computation
 def linear(x, a, b):
     '''
@@ -43,7 +52,7 @@ def linear(x, a, b):
         Gives exponential decay model output with the given parameters
 
     '''
-    return a*x - b
+    return a - b*x
 
 def exp_decay(x, a, b, c):
     '''
@@ -223,7 +232,10 @@ def detrend_segments(segments, poly_order=2, sigma_clip=3, max_iter=5):
     return detrended_segments
 
 
-def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatten_non_transits=True, window_length=201):
+def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatten_non_transits=True,
+                          window_length=401, analyze_periodic_trend=False,
+                          periodogram_min_frequency=1/100, periodogram_max_frequency=1/0.5,
+                          periodogram_samples_per_peak=5):
     """
     Reconstruct a full light curve by combining detrended non-transit data with detrended transit segments.
     
@@ -238,12 +250,33 @@ def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatte
     flatten_non_transits : bool, optional
         Whether to flatten/detrend the non-transit portions (default: True)
     window_length : int, optional
-        Window length for flattening non-transit data (default: 201)
+        Window length for flattening non-transit data (default: 401)
+    analyze_periodic_trend : bool, optional
+        If True, compute a Lomb-Scargle periodogram of the non-transit trend
+        (or non-transit flux if flatten_non_transits=False). Default is False.
+    periodogram_min_frequency : float, optional
+        Minimum frequency for Lomb-Scargle autopower. If None, astropy chooses
+        a default based on the time sampling.
+    periodogram_max_frequency : float, optional
+        Maximum frequency for Lomb-Scargle autopower. If None, astropy chooses
+        a default based on the time sampling.
+    periodogram_samples_per_peak : int, optional
+        Samples per peak for Lomb-Scargle autopower (default: 5).
+    return_periodogram : bool, optional
+        If True, return a third object with periodogram diagnostics.
+        Default is False.
     
     Returns
     -------
     lightkurve.LightCurve
-        Reconstructed light curve with detrended transits and non-transits
+        Reconstructed light curve with detrended transits and non-transits.
+    trend : lightkurve.LightCurve or None
+        Trend model returned by lightkurve flatten when flatten_non_transits=True.
+        Otherwise None.
+    periodogram_results : dict or None, optional
+        Returned only when return_periodogram=True. Contains keys:
+        'frequency', 'power', 'best_frequency', 'best_period',
+        'false_alarm_probability', 'signal_type'.
     """
     # Start with the original light curve arrays - ensure regular numpy arrays
     reconstructed_flux = np.asarray(original_lc.flux)
@@ -252,8 +285,10 @@ def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatte
     
     # Get the non-transit light curve and optionally flatten it
     lc_no_transits = original_lc[~mask]
+    trend = None
     if flatten_non_transits:
         lc_no_transits, trend = lc_no_transits.flatten(window_length=window_length, return_trend=True)
+        
     
     # Calculate the median of the non-transit flux (this is our reference level)
     non_transit_median = np.median(np.asarray(lc_no_transits.flux))
@@ -283,14 +318,72 @@ def reconstruct_lightcurve(original_lc, mask, detrended_transit_segments, flatte
             
             reconstructed_flux[idx] = adjusted_flux
     
+    # Optionally analyze periodicity of the trend signal using Lomb-Scargle
+    periodogram_results = None
+    if analyze_periodic_trend:
+        ls_time = np.asarray(lc_no_transits.time.value)
+        ls_signal = np.asarray(lc_no_transits.flux)
+        signal_type = 'non_transit_flux'
+
+        valid = np.isfinite(ls_time) & np.isfinite(ls_signal)
+        ls_time = ls_time[valid]
+        ls_signal = ls_signal[valid]
+
+        if len(ls_time) > 5 and np.std(ls_signal) > 0:
+            lomb_scargle = LS(ls_time, ls_signal)
+
+            min_freq = periodogram_min_frequency
+            max_freq = periodogram_max_frequency
+            if min_freq is not None and max_freq is not None and min_freq >= max_freq:
+                min_freq, max_freq = max_freq, min_freq
+
+            frequency, power = lomb_scargle.autopower(
+                minimum_frequency=min_freq,
+                maximum_frequency=max_freq,
+                samples_per_peak=periodogram_samples_per_peak
+            )
+
+            frequency = np.asarray(frequency)
+            power = np.asarray(power)
+
+            if len(power) > 0:
+                best_idx = np.argmax(power)
+                best_frequency = frequency[best_idx]
+                best_period = 1 / best_frequency if best_frequency > 0 else np.nan
+                false_alarm_probability = lomb_scargle.false_alarm_probability(power[best_idx])
+            else:
+                best_frequency = np.nan
+                best_period = np.nan
+                false_alarm_probability = np.nan
+
+            periodogram_results = {
+                'frequency': frequency,
+                'power': power,
+                'best_frequency': best_frequency,
+                'best_period': best_period,
+                'false_alarm_probability': false_alarm_probability,
+                'signal_type': signal_type
+            }
+        else:
+            periodogram_results = {
+                'frequency': np.array([]),
+                'power': np.array([]),
+                'best_frequency': np.nan,
+                'best_period': np.nan,
+                'false_alarm_probability': np.nan,
+                'signal_type': signal_type
+            }
+
     # Create the reconstructed light curve - ensure all inputs are regular numpy arrays
     reconstructed_lc = lk.LightCurve(
         time=reconstructed_time,
         flux=reconstructed_flux,
         flux_err=reconstructed_error
     )
-    
-    return reconstructed_lc, trend
+
+    if analyze_periodic_trend:
+        return reconstructed_lc, trend, periodogram_results
+    return reconstructed_lc, trend, None
 
 
 def plot_transit_detrending(original_lc, mask, transit_segments, detrended_segments, 
@@ -366,7 +459,7 @@ def plot_transit_detrending(original_lc, mask, transit_segments, detrended_segme
     
     # Plot 2: Reconstructed light curve with detrended transits (spans all columns)
     ax2 = fig.add_subplot(gs[1, :])
-    reconstructed_lc, trend = reconstruct_lightcurve(original_lc, mask, detrended_segments, flatten_non_transits=True)
+    reconstructed_lc, trend, LS_results = reconstruct_lightcurve(original_lc, mask, detrended_segments, flatten_non_transits=True)
     
     # Plot non-transit data
     non_transit_lc = reconstructed_lc[~mask]
@@ -939,7 +1032,8 @@ def lk_detrend(data, time, scale=401, return_trend = False):
 
 ## Ardor Tiers
 def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False, 
-          host_name=None, manual_transit_solution = None, TOI_Bool = False, inst = 'TESS', detrend = True, graphics_tier0 = False):
+          host_name=None, manual_transit_solution = None, TOI_Bool = False, inst = 'TESS', 
+          detrend = True, graphics_tier0 = False, LS_periodogram= False):
     """
     Tier 0 of ardor. This function accepts a TESS '...lc.fits' file, and returns
     a named tuple which contains a NAN free, detrended and normalized 
@@ -1035,18 +1129,24 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False,
                 elif TOI_Bool == True:
                     period, epoch, duration = Query_Transit_Solution_TOI(int(host_name))
                 elif manual_transit_solution is not None:
-                    period, epoch, duration = manual_transit_solution
-                mask = lc.create_transit_mask(period, epoch, duration/24)
+                    period = []
+                    epoch = []
+                    duration = []
+                    for idx, a in enumerate(manual_transit_solution[0]):
+                        period.append(manual_transit_solution[0][idx])
+                        epoch.append(manual_transit_solution[1][idx])
+                        duration.append(manual_transit_solution[2][idx])
+                mask = lc.create_transit_mask(np.array(period), np.array(epoch), 1.01*np.array(duration)/24)
                 transits = lc[mask]
                 transit_segments = extract_segments(transits)
                 detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
                 # Generate diagnostic plots if requested
                 if graphics_tier0:
-                    plot_transit_detrending(lc, mask, transit_segments, detrended_segments, host_name, sector)
+                    plot_transit_detrending(lc, mask, transit_segments, detrended_segments, host_name, sector, save_path=os.path.join(os.getcwd(), f"{host_name}_sector{sector}_transit_detrending.png"))
                 # Reconstruct the full light curve with detrended transits
-                reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=scale)
-                LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
-                lc = LightCurve(reconstructed_lc.time.value, pdcsap_flux, reconstructed_lc.flux, reconstructed_lc.flux_err.value, fast, observation_time, trend.flux, sector)
+                reconstructed_lc, trend, LS_results = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=scale, analyze_periodic_trend=LS_periodogram)
+                LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector', 'LS_results'])
+                lc = LightCurve(reconstructed_lc.time.value, pdcsap_flux, reconstructed_lc.flux, reconstructed_lc.flux_err.value, fast, observation_time, trend.flux, sector, LS_results)
             elif injection == True:
                 lc, num = SPI.SPI_kappa_flare_injection(TESS_fits_file, 0, 0.5, 2)
                 raw_flux = lc.flux
@@ -1064,11 +1164,11 @@ def tier0(TESS_fits_file, scale = 401, injection = False, deep_transit = False,
                 detrended_segments = detrend_segments(transit_segments, poly_order=4, sigma_clip=3)
                 # Generate diagnostic plots if requested
                 if graphics_tier0:
-                    plot_transit_detrending(lc, mask, transit_segments, detrended_segments, host_name, sector)
+                    plot_transit_detrending(lc, mask, transit_segments, detrended_segments, host_name, sector, save_path=os.path.join(os.getcwd(), f"{host_name}_sector{sector}_transit_detrending.png"))
                 # Reconstruct the full light curve with detrended transits
-                reconstructed_lc, trend = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=scale)
-                LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector'])
-                lc = LightCurve(reconstructed_lc.time, pdcsap_flux, reconstructed_lc.flux, reconstructed_lc.flux_err.value, fast, observation_time, trend.flux, sector)
+                reconstructed_lc, trend, LS_results = reconstruct_lightcurve(lc, mask, detrended_segments, flatten_non_transits=True, window_length=scale, analyze_periodic_trend=LS_periodogram)
+                LightCurve = c.namedtuple('LightCurve', ['time', 'flux', 'detrended_flux', 'error', 'fast_bool', 'obs_time', 'trend', 'sector', 'LS_results'])
+                lc = LightCurve(reconstructed_lc.time, pdcsap_flux, reconstructed_lc.flux, reconstructed_lc.flux_err.value, fast, observation_time, trend.flux, sector, LS_results)
         return lc
 
 def tier0_CHEOPS(time, flux, error, scale = 401, detrend = True, graphics_tier0 = False):
@@ -1121,9 +1221,9 @@ def tier1(time, detrended_flux, sigma, fast=False, injection = False, required_l
     return flare
 
 def tier2(lc, flares, lengths, chi_square_cutoff = 1,
-          output_dir = os.getcwd(), host_name = 'My_Host', csv = True, Sim = False, injection = False, const = 0, 
+          output_dir = os.getcwd(), host_name = 'My_Host', csv = True, Sim = False, const = 0, 
           extract_window = 50, catalog_name = 'All_Flare_Parameters.csv', header = False, cum_obs_time = 0, 
-          graphics_tier2 = True, plot_rejected = False):
+          graphics_tier2 = False, plot_rejected = False):
     '''
     Tier 2 of ardor. This function accepts the 'lc' variable output from tier 0,
     as well as the flare indices and lengths from tier 1, and fits exponential decay models to each flare.
@@ -1154,7 +1254,7 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
 
     Returns
     -------
-    Snippets of the flares found from 
+    Snippets of the flares found from tier 1.
 
     '''
     time = lc.time
@@ -1169,6 +1269,7 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
     
     flare_count = 0
     if csv or graphics_tier2:
+        print(f"Saving flare data to {os.path.join(output_dir, str(host_name))}...")
         os.makedirs(os.path.join(output_dir, str(host_name)), exist_ok=True)
     
     # Calculate median cadence for gap detection
@@ -1212,10 +1313,8 @@ def tier2(lc, flares, lengths, chi_square_cutoff = 1,
             results['flare_number'].append(total_flare_count)
             results['peak_time'].append(norm_time - 2457000)
             results['peak_time_BJD'].append(BJD)
-            results['amplitude'].append(np.log(popt[1]))
-            results['time_scale'].append(np.log(np.abs(popt[0])))
-            results['flare_amplitude'].append(np.log(np.abs(popt[1])))
-            results['flare_time_scale'].append(np.log(np.abs(popt[0])))
+            results['amplitude'].append(popt[0])
+            results['time_scale'].append(0.693/popt[1])
             results['chi_square'].append(chi_squared)
             results['event_index'].append(flare_event)
             
@@ -1514,22 +1613,32 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_di
     dir_name = str(host_name)
     for dirs in working_dirs:
         tier_3_working_dirs.append(os.path.join(tier_3_working_dir, dirs))
-    flare_csvs = os.listdir(tier_2_output_dir)
+    flare_csvs = sorted([f for f in os.listdir(tier_2_output_dir) if f.endswith('.csv')],
+                        key=lambda f: (_extract_flare_number(f) is None, _extract_flare_number(f) or 10**12, f))
     os.makedirs(os.path.join(tier_3_output_dir, dir_name), exist_ok=True)
     output = os.path.join(tier_3_output_dir, dir_name)
-    completed = os.listdir(output)
-    if len(completed) > 0:
-        last_completed = completed[-1]
-        last_completed = last_completed.replace('_ns_corner.png', '.csv')
-        idx = flare_csvs.index(last_completed)
-        if idx == (len(flare_csvs) - 1):
-            print('All flares in this directory have been processed already.')
+
+    # Resume logic: identify last completed flare, then resume from (last + 1) index in Tier2 CSV list.
+    completed_files = [f for f in os.listdir(output) if f.endswith('_ns_corner.png')]
+    completed_flare_numbers = [_extract_flare_number(f) for f in completed_files]
+    completed_flare_numbers = [n for n in completed_flare_numbers if n is not None]
+
+    if len(completed_flare_numbers) > 0:
+        largest_completed_flare = max(completed_flare_numbers)
+        next_flare = largest_completed_flare + 1
+
+        resume_idx = None
+        for i, flare_file in enumerate(flare_csvs):
+            if _extract_flare_number(flare_file) == next_flare:
+                resume_idx = i
+                break
+
+        if resume_idx is not None:
+            flare_csvs = flare_csvs[resume_idx:]
+            print(f'Resuming after Flare_{largest_completed_flare}: starting at Flare_{next_flare}.')
+        else:
+            print(f'Could not find Flare_{next_flare} in Tier2 CSV list; no automatic resume point found.')
             return
-        flare_csvs = flare_csvs[idx+1:]
-        try:
-            sector = int(last_completed[1:3])
-        except ValueError:
-            sector = int(last_completed[1])
     for flares in flare_csvs:
         try:
             if N_Flare_to_Model == 1:
@@ -1568,8 +1677,9 @@ def tier3(tier_2_output_dir, tier_3_working_dir, tier_3_output_dir, templates_di
                 os.rename(os.path.join(output, 'ns_corner.png', ), os.path.join(output, f'{flares.replace(".csv", "")}_ns_corner.png'))
             for dirs in os.listdir(tier_3_working_dir):
                 allesfitter_priors.clear_workingdir(os.path.join(tier_3_working_dir, dirs))
-        except:
+        except Exception as e:
             print(f'Error with {flares}, moving to next flare.')
+            traceback.print_exc()
             for dirs in os.listdir(tier_3_working_dir):
                 allesfitter_priors.clear_workingdir(os.path.join(tier_3_working_dir, dirs))
             continue
