@@ -119,14 +119,11 @@ def SPI_Cubic(ratio, loc, e, a, period, length = 200):
 
 
 ##### FLARE INJECTION IMPLEMENTATIONS #######
-def amp_log_normal():
-    value = 1000
-    while value > 0.2 or value < 0.01:
-        value = np.random.lognormal(mean = 0.020744, sigma = 4.33924339)
-        
+def amp_log_normal(n):
+    value = np.random.lognormal(mean = 0.020744, sigma = 4.33924339, size = n)
     return value
 
-def FWHM_uniform():
+def FWHM_uniform(n):
     return np.random.uniform(0.001388888, 0.041)
 
 def find_nearest(array, value):
@@ -135,6 +132,7 @@ def find_nearest(array, value):
     return idx
 
 def SPI_kappa_flare_injection(light_curve, kappa, loc, pl_period, sp_type = 'M', flare_type='Flaring', fast=False, theta_param = 0, phi_param = 0):
+    rng = np.random.default_rng()
     location_list = []
     ## Approximate flare rate per 2 minute cadence of flaring M/F stars (~0.5 flares/day)
     if sp_type == 'M':
@@ -155,25 +153,25 @@ def SPI_kappa_flare_injection(light_curve, kappa, loc, pl_period, sp_type = 'M',
     length = len(lc.time)
     model, a = SPI_kappa(kappa, loc, length)
     ## Assume phase is random to begin each light curve. Periastron at 0.5
-    random_time = lc.time[int(len(lc.time)/2)]
+    random_time = lc.time[0] + rng.random()*pl_period
     phase_array = ((lc.time - (random_time+ pl_period/2)) % pl_period)/pl_period
     ## Iterate over the time scale of the light curve
     flares = 0
     for interval in range(length - 200):
         phase = phase_array[interval]
-        flare_check = np.random.random()
+        flare_check = rng.random()
         flare_rate = model[find_nearest(a, phase)]*rate
         if flare_rate >= flare_check:
             location = interval
             counter = 0 
             for locations in location_list:
                 while location > locations - 100 and location < locations + 100 and counter < 10000:
-                    location = np.random.randint(50, length-50)
+                    location = rng.integers(50, length-50)
                     counter += 1
             sample_baseline = lc.flux[location-300:location+300]
             normalized_sample = sample_baseline/np.median(sample_baseline)
-            FWHM = FWHM_uniform()
-            amp = amp_log_normal()
+            FWHM = FWHM_uniform(rng)
+            amp = amp_log_normal(rng)
             flare_inject = aflare.aflare1(lc.time[location-300:location+300], lc.time[location], FWHM, amp)
             normalized_sample_inject = normalized_sample + flare_inject
             lc.flux[location-300:location+300] = np.median(sample_baseline)*normalized_sample_inject
@@ -222,3 +220,53 @@ def SPI_cubic_flare_injection(light_curve, star, planet, sp_type = 'M', fast=Fal
             location_list.append(location)
             flares += 1
     return lc, random_time
+
+
+def SPI_kappa_flare_injection_arrays(time, flux, kappa, loc, pl_period, sp_type='M', flare_type='Flaring'):
+    rng = np.random.default_rng()
+    location_list = []
+    ## Approximate flare rate per 2 minute cadence of flaring M/F stars (~0.5 flares/day)
+    if sp_type == 'M':
+        rate = 1.4e-4
+    if sp_type == 'F':
+        rate = 1e-4
+    if sp_type == 'G':
+        rate = 5e-5
+    if sp_type == 'K':
+        rate = 5e-5
+    ## Poor statistics on this, but G type stars flare ~2e-5 per 2 minute cadence
+    elif flare_type == 'Not Flaring':
+        rate = 2.78e-8
+    ## Convert from 2 minute cadence to 12 minute cadence
+    rate *= 6
+
+    time = np.asarray(time)
+    flux = np.asarray(flux).copy()
+    length = len(time)
+    model, a = SPI_kappa(kappa, loc, length)
+    ## Assume phase is random to begin each light curve. Periastron at 0.5
+    random_time = time[0] + rng.random()*pl_period
+    phase_array = ((time - (random_time + pl_period/2)) % pl_period)/pl_period
+    ## Iterate over the time scale of the light curve
+    flares = 0
+    for interval in range(length - 200):
+        phase = phase_array[interval]
+        flare_check = rng.random()
+        flare_rate = model[find_nearest(a, phase)]*rate
+        if flare_rate >= flare_check:
+            location = interval
+            counter = 0
+            for locations in location_list:
+                while location > locations - 100 and location < locations + 100 and counter < 10000:
+                    location = rng.integers(50, length-50)
+                    counter += 1
+            sample_baseline = flux[location-300:location+300]
+            normalized_sample = sample_baseline/np.median(sample_baseline)
+            FWHM = FWHM_uniform(rng)
+            amp = amp_log_normal(rng)
+            flare_inject = aflare.aflare1(time[location-300:location+300], time[location], FWHM, amp)
+            normalized_sample_inject = normalized_sample + flare_inject
+            flux[location-300:location+300] = np.median(sample_baseline)*normalized_sample_inject
+            location_list.append(location)
+            flares += 1
+    return location_list, flux, random_time
