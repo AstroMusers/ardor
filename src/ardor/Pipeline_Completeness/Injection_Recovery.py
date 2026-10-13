@@ -8,6 +8,7 @@ Created on Sun Nov 12 09:35:59 2023
 
 import ardor.Flares.aflare as af
 import ardor.Flares.Flare as Flare
+from tdpy.numerics import find_nearest
 import numpy as np
 import os
 from scipy.integrate import simpson
@@ -31,9 +32,6 @@ def amp_log_normal():
 def FWHM_uniform():
     return np.random.uniform(0.0005, 0.041)
 
-def find_nearest(array, value):
-    idx = (np.abs(array - value)).argmin()
-    return idx
 
 def Flare_Injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False, detrend = True, rates = True,PR = False, sigma = 3, chi_sq = 1):
     location_list = []
@@ -71,7 +69,7 @@ def Flare_Injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False
             flare_rate = rate
             if flare_rate >= flare_check:
                 location = interval
-                counter = 0 
+                counter = 0
                 sample_baseline = data[location-300:location+300]
                 baseline_error = np.std(sample_baseline)
                 if np.isnan(baseline_error) == True:
@@ -95,7 +93,7 @@ def Flare_Injection(light_curve, sp_type = 'M', flare_type='Flaring', fast=False
     if rates== False:
         for locations in location_list:
             location = locations
-            counter = 0 
+            counter = 0
             sample_baseline = data[location-1000:location+1000]
             baseline_error = np.std(sample_baseline)
             normalized_sample = sample_baseline
@@ -131,8 +129,8 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False, old
         for M_dwarves in os.listdir(input_dir):
             ##Iteration Scheme
             a = os.listdir(input_dir + '/' + M_dwarves)
-            print(item_count, M_dwarves) 
-            
+            print(item_count, M_dwarves)
+
             ##Relevant parameters from TOI catalog
             file = 0
             ##Trackable values per star
@@ -143,13 +141,13 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False, old
                     if folders.endswith('a_fast-lc.fits') == True:
                         continue
                         fast = True
-                    elif folders.endswith('a_fast-lc.fits') == False:  
+                    elif folders.endswith('a_fast-lc.fits') == False:
                         fast = False
                     t2 = timer.time()
                     tier0_tau.append(t2-t1)
                     flare_events_T1, lengths = Flare.flare_ID(lc.flux, 3, fast = fast, injection = True, old = old)
                     t3 = timer.time()
-                    tier1_tau.append(t3-t2)                
+                    tier1_tau.append(t3-t2)
                     if len(flare_events_T1) != 0:
                         for flares in flare_events_T1:
                             for keys in flare_inject_dict_T1.keys():
@@ -186,7 +184,7 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False, old
                     error_T1 = []
                     integral_T1 = []
                     injected_T1 = []
-                    
+
                     amp_list_T2=[]
                     FWHM_list_T2 = []
                     result_T2 = []
@@ -227,10 +225,10 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False, old
                         f.close()
             except:
                 continue
-    
+
 
 def Injection_Recovery_Grid(data_dir, grid_dir, label = 'T1', energy = False):
-    
+
     data = pd.read_csv(data_dir)
     data.columns.values[0] = 'Amplitude'
     data.columns.values[1] = 'FWHM'
@@ -307,7 +305,7 @@ def Injection_Recovery_Grid(data_dir, grid_dir, label = 'T1', energy = False):
         with open(grid_dir + '/Injection_Recovery_Grid_Energy' + label + '.csv', 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerows(y)
-        
+
 def Precision_Recall(input_dir, output_dir, sigma_list, chi_set, star_type = 'G', rate = False, old = False):
     lc_num = 0
     item_count = 0
@@ -318,8 +316,8 @@ def Precision_Recall(input_dir, output_dir, sigma_list, chi_set, star_type = 'G'
         for M_dwarves in os.listdir(input_dir)[0:20]:
             ##Iteration Scheme
             a = os.listdir(input_dir + '/' + M_dwarves)
-            print(item_count, M_dwarves) 
-            
+            print(item_count, M_dwarves)
+
             ##Relevant parameters from TOI catalog
             file = 0
             ##Trackable values per star
@@ -330,13 +328,13 @@ def Precision_Recall(input_dir, output_dir, sigma_list, chi_set, star_type = 'G'
                     if folders.endswith('a_fast-lc.fits') == True:
                         continue
                         fast = True
-                    elif folders.endswith('a_fast-lc.fits') == False:  
+                    elif folders.endswith('a_fast-lc.fits') == False:
                         fast = False
                     t2 = timer.time()
                     tier0_tau.append(t2-t1)
                     flare_events_T1, lengths = Flare.flare_ID(lc.flux, sigma, fast = fast, injection = True, old = old)
                     t3 = timer.time()
-                    tier1_tau.append(t3-t2)                
+                    tier1_tau.append(t3-t2)
                     if len(flare_events_T1) != 0:
                         for flares in flare_events_T1:
                             for keys in flare_inject_dict_T1.keys():
@@ -386,7 +384,7 @@ def Precision_Recall(input_dir, output_dir, sigma_list, chi_set, star_type = 'G'
                     injected_T1 = []
                     sigma_T1 = []
                     chi_sq_T1 = []
-                    
+
                     amp_list_T2=[]
                     FWHM_list_T2 = []
                     result_T2 = []
@@ -440,10 +438,10 @@ def Tier2_PR_Test(input_dir, output_dir, chi_list, epoch_list):
         FP = 0
         FN = 0
         for num, data in enumerate(files):
-            
+
             if data.endswith('a_fast-lc.fits') == True:
                 fast = True
-            elif data.endswith('a_fast-lc.fits') == False:  
+            elif data.endswith('a_fast-lc.fits') == False:
                 fast = False
             lc = Flare.tier0(input_dir + '/' + data)
             new_epochs = []
@@ -482,10 +480,10 @@ def Tier2_PR_Test(input_dir, output_dir, chi_list, epoch_list):
         Z = np.transpose(Z)
         with open(output_dir, "a") as f:
             np.savetxt(f, Z, delimiter=",", fmt='%s')
-            f.close() 
+            f.close()
         precision = []
         recall = []
-    
+
 
 
 def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,output_dir, tier = 'T1'):
@@ -511,10 +509,10 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,ou
     x_err_h1 = []
     y_err_l1 = []
     y_err_h1 = []
-    
+
     if tier == 'T1':
         counts = 0
-        
+
         for bins in range(len(sigma_set)):
             for index, num in enumerate(sigma1):
                 if sigma1[index] == sigma_set[counts]:
@@ -527,7 +525,7 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,ou
                     if Bool1[index] == 0 and False_Pos1[index] == 1:
                         FP += 1
                         count +=1
-            
+
             precision_list = []
             recall_list = []
             precision = TP/(TP+FP)
@@ -550,8 +548,8 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,ou
             TP = 0
             FP = 0
             FN = 0
-        
-        
+
+
         # upper = 100
         # lower = 94
         x_err_l = []
@@ -581,17 +579,17 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,ou
                 FN_t = poisson.rvs(FN)
                 recall_list.append((TP_t)/(TP_t+FN_t))
                 precision_list.append((TP_t)/(TP_t+FP_t))
-               
+
             precision_list = np.sort(np.array(precision_list))
             recall_list = np.sort(np.array(recall_list))
-            
+
             y_err_l.append(np.abs(precision_list[9500]-precision))
             y_err_h.append(np.abs(precision_list[500]-precision))
             x_err_l.append(np.abs(recall_list[9500]-recall))
             x_err_h.append(np.abs(recall_list[500]-recall))
             x.append((TP)/(TP+FN))
             y.append((TP)/(TP+FP))
-            counts +=1 
+            counts +=1
             TP = 0
             FP = 0
             FN = 0
@@ -609,7 +607,7 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,ou
         plt.show()
     elif tier == 'T2':
         counts = 0
-        
+
         for bins in range(len(chi_set)):
             for index, num in enumerate(chi_sq1):
                 if chi_sq1[index] == chi_set[counts]:
@@ -644,8 +642,8 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,ou
             TP = 0
             FP = 0
             FN = 0
-        
-        
+
+
         # upper = 100
         # lower = 94
         x_err_l = []
@@ -675,17 +673,17 @@ def Precision_Recall_Data_Processing(PR_T1_dir, PR_T2_dir, sigma_set, chi_set,ou
                 FN_t = poisson.rvs(FN)
                 recall_list.append((TP_t)/(TP_t+FN_t))
                 precision_list.append((TP_t)/(TP_t+FP_t))
-               
+
             precision_list = np.sort(np.array(precision_list))
             recall_list = np.sort(np.array(recall_list))
-            
+
             y_err_l.append(np.abs(precision_list[9500]-precision))
             y_err_h.append(np.abs(precision_list[500]-precision))
             x_err_l.append(np.abs(recall_list[9500]-recall))
             x_err_h.append(np.abs(recall_list[500]-recall))
             x.append((TP)/(TP+FN))
             y.append((TP)/(TP+FP))
-            counts +=1 
+            counts +=1
             TP = 0
             FP = 0
             FN = 0

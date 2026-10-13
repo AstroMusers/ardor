@@ -11,40 +11,14 @@ from scipy.integrate import simpson
 import numpy as np
 import os
 from ardor.Flares import aflare
+from ardor.Flares.aflare import exp_decay
 from ardor.Utils.planck_law import planck_law, planck_integrator
-from ardor.Utils.Utils import asymmetric_sample, find_nearest, copy_output
-import allesfitter
+from ardor.Utils.Utils import asymmetric_sample, copy_output
+from tdpy.numerics import find_nearest
 import astropy.io.ascii as ascii
 from astropy.table import Table
 import shutil
 import pandas as pd
-def find_nearest(array, value):
-    array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
-    return array[idx], idx
-
-def exp_decay(x, a, b, c):
-    '''
-    
-
-    Parameters
-    ----------
-    x : numpy array
-        Time axis data
-    a : float
-        multiplicative parameter of the exponential decay function
-    b : float
-        time constant parameter of the exponential decay function
-    c : float
-        Time-offset for the exponential decay function
-
-    Returns
-    -------
-    numpy array
-        Gives exponential decay model output with the given parameters
-
-    '''
-    return a * np.exp(-b * x) + c
 
 def clear_workingdir(working_dir):
     ## Clear the files in the working directory
@@ -192,7 +166,7 @@ def slice_flare(time, data):
         Sliced flux axis data.
 
     '''
-    index = find_nearest(time, 0)[1]
+    index = find_nearest(time, 0)
     return time[index:], data[index:]
 
 def find_local_maxima(time, data):
@@ -269,7 +243,7 @@ def csv_cleaner(flare_csv_dir):
         dt = time[index + 1] - time[index]
         if dt > 10:
             gap_index = index + 1
-    
+
     for index in range(len(time)):
         if np.isnan(error[index]) == True:
             error[index] = 1e-3
@@ -308,6 +282,8 @@ def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spli
     Returns:
         float: Change in log Bayesian evidence of the best .
     """
+    import allesfitter
+
     if len(working_dirs) < N_models + 1:
         raise ValueError("Working dirs length does not match number of models.")
     BJD, amp_guess = csv_cleaner(target_file)
@@ -329,7 +305,7 @@ def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spli
     for idx, working_dir in enumerate(working_dirs):
         ## Determine Bayes Factor for baseline model
         if idx == 0:
-            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
+            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num,
                                  peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors, amp_guess=amp_guess)
             construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num, ns_tol=0.1, cores=NS_CPUS)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
@@ -338,7 +314,7 @@ def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spli
             log_Z0 = allesfitter.get_logZ(working_dir)[0][0]
         ## Determine Bayes Factor for N=1 model
         if idx == 1:
-            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
+            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num,
                                  peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors, amp_guess=amp_guess)
             construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num, ns_tol=0.1, cores=NS_CPUS)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
@@ -361,7 +337,7 @@ def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spli
                 return params, (log_Z1 - log_Z0), 1
         ## If change in Bayes Factor >= 5, continue to next model
         if idx == 2:
-            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
+            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num,
                                  peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors, amp_guess=amp_guess)
             construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num, ns_tol=0.1, cores=NS_CPUS)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
@@ -384,7 +360,7 @@ def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spli
                 np.savetxt(target_file, X, delimiter=',', header=f'{BJD}')
                 return params, (log_Z2 - log_Z1), 2
         if idx == 3:
-            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num, 
+            construct_param_file(os.path.join(working_dir, 'params.csv'), baseline=baseline, N=idx, name=file_num,
                                  peak_time_best_guess=peak_time_best_guess, peak_time_priors=peak_time_priors, amp_guess=amp_guess)
             construct_settings_file(os.path.join(template_dir, 'settings.csv'), working_dir, baseline=baseline, N=idx, name=file_num, ns_tol=0.1, cores=NS_CPUS)
             shutil.copyfile(target_file, os.path.join(working_dir, os.path.basename(target_file)))
@@ -408,7 +384,7 @@ def model_compare(target_file, working_dirs, template_dir, baseline='hybrid_spli
                 return params, (log_Z3 - log_Z2), 3
 
 ### Constructing parameter and settings files for allesfitter
-def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_priors = None, baseline = 'hybrid_spline', 
+def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_priors = None, baseline = 'hybrid_spline',
                          model = 'flare', N=1, name = 'Flare', custom_priors = False, priors = None, amp_guess = None):
     if len(peak_time_best_guess) > 3 and N == 3:
         peak_time_best_guess = peak_time_best_guess[:3]
@@ -433,14 +409,14 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
                             'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2']
                 try:
                     best_guess = [peak_time_best_guess[0], 0.01, amp_guess, peak_time_best_guess[1], 0.01, amp_guess]
-                    priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.05', f'uniform {amp_guess*1/2} {amp_guess*2}', 
+                    priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.05', f'uniform {amp_guess*1/2} {amp_guess*2}',
                                 f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.05', f'uniform {amp_guess*1/2} {amp_guess*2}']
                     labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
                                 'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
                     units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux']
                 except IndexError:
                     best_guess = [0, 0.01, 0.1, 0.03, 0.01, 0.1]
-                    priors = [f'uniform {-0.02} {0.02}', 'uniform 0 0.05', 'uniform 0 3', 
+                    priors = [f'uniform {-0.02} {0.02}', 'uniform 0 0.05', 'uniform 0 3',
                                 f'uniform {0.02} {0.04}', 'uniform 0 0.05', 'uniform 0 3']
                     labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
                                 'Flare2_Time', 'Flare2_FWHM', 'Flare2_Amp.']
@@ -450,7 +426,7 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
                             'flare_tpeak_2', 'flare_fwhm_2', 'flare_ampl_2',
                             'flare_tpeak_3', 'flare_fwhm_3', 'flare_ampl_3']
                 best_guess = [peak_time_best_guess[0], 0.01, 0.1, peak_time_best_guess[1], 0.01, 0.1, peak_time_best_guess[2], 0.01, 0.1]
-                priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.05', 'uniform 0 3', 
+                priors = [f'uniform {peak_time_priors[0][0]} {peak_time_priors[0][1]}', 'uniform 0 0.05', 'uniform 0 3',
                             f'uniform {peak_time_priors[1][0]} {peak_time_priors[1][1]}', 'uniform 0 0.05', 'uniform 0 3',
                             f'uniform {peak_time_priors[2][0]} {peak_time_priors[2][1]}', 'uniform 0 0.5', 'uniform 0 3']
                 labels = ['Flare1_Time', 'Flare1_FWHM', 'Flare1_Amp.',
@@ -459,11 +435,11 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
                 units = ['days', 'days', 'rel. flux', 'days', 'days', 'rel. flux',
                             'days', 'days', 'rel. flux']
         if baseline == 'sample_GP_Matern32':
-            param_names += [f'ln_err_flux_{name}', f'baseline_gp_offset_flux_{name}', f'baseline_gp_matern32_lnsigma_flux_{name}', 
+            param_names += [f'ln_err_flux_{name}', f'baseline_gp_offset_flux_{name}', f'baseline_gp_matern32_lnsigma_flux_{name}',
                             f'baseline_gp_matern32_lnrho_flux_{name}']
             best_guess += [-7,0,-8, -1]
             priors += ['uniform -10 -2', 'uniform -0.02 0.02', 'uniform -9.5 -7', 'uniform -3 0.5']
-            labels += [f'ln_err_flux_{name}', rf'GP_Matern32_Baseline_{name}', rf'GP_Matern32_ln$sigma$_{name}', 
+            labels += [f'ln_err_flux_{name}', rf'GP_Matern32_Baseline_{name}', rf'GP_Matern32_ln$sigma$_{name}',
                     rf'GP_Matern32_ln$rho$_{name}']
             units += ['rel. flux', 'rel. flux', '', '']
         elif baseline == 'hybrid_spline':
@@ -481,7 +457,7 @@ def construct_param_file(output_dir,  peak_time_best_guess = None, peak_time_pri
     table.add_column(units, name='unit')
     table.write(output_dir, overwrite=True, format='csv')
 
-def construct_settings_file(settings_file_dir, working_dir, baseline = 'hybrid_spline', 
+def construct_settings_file(settings_file_dir, working_dir, baseline = 'hybrid_spline',
                          N=1, name = 'Flare', multi_process_bool = True
                          , cores = 10, walkers = 15, steps = 5000, burn_in = 1000, ns_tol=0.1):
     """Constructs settings file for Tier 3 allesfitter MCMC run.
@@ -550,12 +526,12 @@ def save_params_to_csv(host_name, flare_number, params, dlogZ, output_dir, energ
     for idx in range(N_flares):
         TESS_BJD = params[idx]['epoch_BJD'][0] - 2457000
         if fast == False:
-            ZZ = np.column_stack((host_name, sector, flare_number,TESS_BJD, params[idx]['epoch_BJD'][0], params[idx]['epoch_BJD'][1], params[idx]['epoch_BJD'][2], 
-                                params[idx]['amplitude'][0], params[idx]['amplitude'][1], params[idx]['amplitude'][2], 
+            ZZ = np.column_stack((host_name, sector, flare_number,TESS_BJD, params[idx]['epoch_BJD'][0], params[idx]['epoch_BJD'][1], params[idx]['epoch_BJD'][2],
+                                params[idx]['amplitude'][0], params[idx]['amplitude'][1], params[idx]['amplitude'][2],
                                 params[idx]['fwhm'][0], params[idx]['fwhm'][1], params[idx]['fwhm'][2], energy[0], energy[1], energy[2], idx, dlogZ, cum_obs_time, '2-min'))
         if fast == True:
-            ZZ = np.column_stack((host_name, sector,TESS_BJD, flare_number,params[idx]['epoch_BJD'][0], params[idx]['epoch_BJD'][1], params[idx]['epoch_BJD'][2], 
-                                params[idx]['amplitude'][0], params[idx]['amplitude'][1], params[idx]['amplitude'][2], 
+            ZZ = np.column_stack((host_name, sector,TESS_BJD, flare_number,params[idx]['epoch_BJD'][0], params[idx]['epoch_BJD'][1], params[idx]['epoch_BJD'][2],
+                                params[idx]['amplitude'][0], params[idx]['amplitude'][1], params[idx]['amplitude'][2],
                                 params[idx]['fwhm'][0], params[idx]['fwhm'][1], params[idx]['fwhm'][2], energy[0], energy[1], energy[2], idx, dlogZ, cum_obs_time, '20-sec'))
         with open(output_dir + '/Tier_3_Flare_Params.csv', "a") as f:
             np.savetxt(f, ZZ, delimiter=",", fmt='%s')

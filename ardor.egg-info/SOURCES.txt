@@ -1,7 +1,0 @@
-README.md
-setup.py
-ardor.egg-info/PKG-INFO
-ardor.egg-info/SOURCES.txt
-ardor.egg-info/dependency_links.txt
-ardor.egg-info/requires.txt
-ardor.egg-info/top_level.txt

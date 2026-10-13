@@ -2,25 +2,36 @@ import numpy as np
 import pandas as pd
 import csv
 from astropy import units as u
-import synphot as syn
-import stsynphot as stsyn
-import stpsf
-from expecto import get_spectrum
+try:
+    import synphot as syn
+    import stsynphot as stsyn
+    import stpsf
+    ROMAN_WFI = stpsf.WFI()
+    ROMAN_FILTERS = {
+        "F087": ROMAN_WFI._get_synphot_bandpass("F087"),
+        "F146": ROMAN_WFI._get_synphot_bandpass("F146"),
+        "F213": ROMAN_WFI._get_synphot_bandpass("F213"),
+    }
+except (ImportError, Exception):
+    syn = None
+    stsyn = None
+    stpsf = None
+    ROMAN_WFI = None
+    ROMAN_FILTERS = {}
+
+try:
+    from expecto import get_spectrum
+except ImportError:
+    get_spectrum = None
+
 from ardor.Flares.aflare import aflare1, aflare
-from ardor.Pipeline_Completeness.Injection_Recovery import amp_log_normal, FWHM_uniform
 from scipy.interpolate import make_interp_spline
 from pathlib import Path
 import os
 
-DEFAULT_ROMAN_RATIO_DIR = Path("/data2/whitsett.n/dustmaps/ratio_models")
-DEFAULT_VEGA_PATH = Path("/data2/whitsett.n/Spectra/grp/redcat/trds/calspec/alpha_lyr_stis_011.fits")
+DEFAULT_ROMAN_RATIO_DIR = Path(__file__).resolve().parents[3] / "catalogs"
+DEFAULT_VEGA_PATH = Path(__file__).resolve().parents[3] / "catalogs" / "alpha_lyr_stis_011.fits"
 
-ROMAN_WFI = stpsf.WFI()
-ROMAN_FILTERS = {
-    "F087": ROMAN_WFI._get_synphot_bandpass("F087"),
-    "F146": ROMAN_WFI._get_synphot_bandpass("F146"),
-    "F213": ROMAN_WFI._get_synphot_bandpass("F213"),
-}
 
 def get_data_file(filename: str) -> Path:
     """Return the full path to a ratio-grid data file.
@@ -291,6 +302,14 @@ def inject_random_flares(
 
     flare_events = []
     if behavior == "random":
+        try:
+            from ardor.Pipeline_Completeness.Injection_Recovery import amp_log_normal, FWHM_uniform
+        except ImportError:
+            def amp_log_normal():
+                return np.random.lognormal(np.log(0.025), sigma=np.log(4.33924339))
+            def FWHM_uniform():
+                return np.random.uniform(0.0005, 0.041)
+
         for _ in range(n_flares):
             flare_events.append(
                 {
@@ -401,11 +420,11 @@ def export_blackbody_ratio_grid_csv(
 
     # Create 2D grid: rows are temperatures, columns are E(B-V) values
     ratio_grid = np.zeros((len(temperatures), len(extinct)))
-    
+
     for i, teff in enumerate(temperatures):
         blackbody_spec = build_blackbody_spectrum(teff)
         normalized_spec = blackbody_spec.normalize(reference_mag, band=reference_band, force='extrap')
-        
+
         for j, ebv in enumerate(extinct):
             # Apply extinction to the bandpass rather than the source spectrum.
             # Multiplying the analytical BlackBody1D source by an empirical extinction
@@ -423,11 +442,11 @@ def export_blackbody_ratio_grid_csv(
             f146_rate_ext = syn.Observation(
                 normalized_spec, extincted_f146, force='extrap'
             ).countrate(area=telescope_area).to_value(u.ct / u.s)
-            
+
             ratio_grid[i, j] = band_rate_ext / f146_rate_ext
-        
+
         print(teff, band_rate_ext / f146_rate_ext)
-    
+
     # Write 2D grid to CSV
     with open(csv_path, "w", newline="") as handle:
         writer = csv.writer(handle)

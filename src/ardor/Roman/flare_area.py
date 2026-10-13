@@ -8,39 +8,41 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import CubicSpline, interp1d
 from scipy.integrate import quad
 from ardor.Utils.planck_law import planck_integrator
-# chunk_size = int(5e6)
-# tic_path = '/data2/whitsett.n/TIC/tic_dec30_00S__28_00S.csv'
-# output_path = '/ugrad/whitsett.n/Roman/teff_binned_smoothed_radius.csv'
+
 n_radius_bins = 30
 
-radii = pd.read_csv('/ugrad/whitsett.n/Roman/teff_binned_smoothed_radius.csv')
-test = radii['teff_3500_3600_K'].to_numpy()
-rad = radii['radius_bin_center'].to_numpy()
-function = CubicSpline(rad, test, extrapolate=False)
-# Integrate over actual data bounds, not extrapolated range
-norm = function.integrate(np.min(rad), np.max(rad))
-# Normalize by scaling coefficients
-function.c /= norm
-# Use actual radius bounds from data to avoid NaNs from extrapolation
-x_grid = np.linspace(np.min(rad), np.max(rad), 1000)
-pdf_vals = function(x_grid)
-color_factor = planck_integrator(600e-6, 1000e-6, 3550)/planck_integrator(600e-6, 1000e-6, 9000)
-cdf = np.cumsum(pdf_vals)
-cdf /= cdf[-1]  # Normalize CDF to range [0, 1]
-inv_cdf = interp1d(cdf, x_grid, bounds_error=False, fill_value=(x_grid[0], x_grid[-1]))
-u = np.random.rand(100)  # 10k samples
-samples = inv_cdf(u)
+
+def run_flare_area_analysis():
+    radius_file = '/ugrad/whitsett.n/Roman/teff_binned_smoothed_radius.csv'
+    if not os.path.exists(radius_file):
+        print(f"Data file not found: {radius_file}")
+        return
+    radii = pd.read_csv(radius_file)
+    test = radii['teff_3500_3600_K'].to_numpy()
+    rad = radii['radius_bin_center'].to_numpy()
+    function = CubicSpline(rad, test, extrapolate=False)
+    # Integrate over actual data bounds, not extrapolated range
+    norm = function.integrate(np.min(rad), np.max(rad))
+    # Normalize by scaling coefficients
+    function.c /= norm
+    # Use actual radius bounds from data to avoid NaNs from extrapolation
+    x_grid = np.linspace(np.min(rad), np.max(rad), 1000)
+    pdf_vals = function(x_grid)
+    color_factor = planck_integrator(600e-6, 1000e-6, 3550)/planck_integrator(600e-6, 1000e-6, 9000)
+    cdf = np.cumsum(pdf_vals)
+    cdf /= cdf[-1]  # Normalize CDF to range [0, 1]
+    inv_cdf = interp1d(cdf, x_grid, bounds_error=False, fill_value=(x_grid[0], x_grid[-1]))
+    u = np.random.rand(100)  # 10k samples
+    samples = inv_cdf(u)
+
+    flare_file = '/ugrad/whitsett.n/Roman/Flare_Catalogs/All_Exoplanet_MCMC_Flares.csv'
+    if os.path.exists(flare_file):
+        flare_data = pd.read_csv(flare_file)
+        print(flare_data.loc[(flare_data['FWHM'] > 0.02), ['Host_ID', '#']])
 
 
-
-# flare_area = flare_total_area(FWHM_uniform(len(u)), amp_log_normal(len(u)))
-# print(flare_area)
-# energy = (5.6704e-5)*(9000**4)*(flare_area*86400)*np.pi*(samples*6.957e10*samples*6.957e10)*color_factor
-# print(energy)
-
-flare_data = pd.read_csv('/ugrad/whitsett.n/Roman/Flare_Catalogs/All_Exoplanet_MCMC_Flares.csv')
-
-print(flare_data.loc[(flare_data['FWHM'] > 0.02), ['Host_ID', '#']])
+if __name__ == '__main__':
+    run_flare_area_analysis()
 
 
 

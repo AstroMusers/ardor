@@ -22,7 +22,7 @@ def CVZ(RA, DEC, radius=8.05, resolution=100):
     if DEC + radius > 90 or DEC - radius < -90:
         pole = True
     for theta in deg:
-        new_RA = RA + np.cos(theta)*radius 
+        new_RA = RA + np.cos(theta)*radius
         new_DEC = DEC + np.sin(theta)*radius
         if pole == False:
             if new_RA > 360:
@@ -39,7 +39,7 @@ def CVZ(RA, DEC, radius=8.05, resolution=100):
         coords.append((new_RA, new_DEC))
         RA_list.append(new_RA)
         DEC_list.append(new_DEC)
-        
+
     return coords, np.array(RA_list), np.array(DEC_list)
 
 def plot_mwd(RA,Dec,org=0,title='Mollweide projection', projection='mollweide'):
@@ -72,7 +72,7 @@ def cost_function(CVZ_RA, CVZ_DEC, CVZ_radius, targets_RAs, targets_DECs, target
     coord = SkyCoord(CVZ_RA, CVZ_DEC, unit='deg')
     CVZ_RA = float(coord.ra.degree)
     CVZ_DEC = float(coord.dec.degree)
-    index = 0 
+    index = 0
     target_count = 0
     for index in range(len(targets_RAs)):
         target_RA = targets_RAs[index] - CVZ_RA
@@ -97,11 +97,15 @@ def cost_function_map(targets_RAs, targets_DECs, output_dir=None, resolution=50)
     if output_dir != None:
         np.savetxt(output_dir, CF_map, delimiter=',')
 
-TOIs = pd.read_csv('/data/whitsett.n/ardor/templates/csv-file-toi-catalog.csv')
-TOI_RA = np.array(TOIs['TIC Right Ascension'])
-TOI_DEC = np.array(TOIs['TIC Declination'])
 
-cost_function_map(TOI_RA, TOI_DEC)
+if __name__ == "__main__":
+    from pathlib import Path
+    toi_path = Path(__file__).resolve().parents[3] / "templates" / "csv-file-toi-catalog.csv"
+    if toi_path.exists():
+        TOIs = pd.read_csv(toi_path)
+        TOI_RA = np.array(TOIs['TIC Right Ascension'])
+        TOI_DEC = np.array(TOIs['TIC Declination'])
+        cost_function_map(TOI_RA, TOI_DEC)
 # values_RA = []
 # values_DEC = []
 # RA_span = np.linspace(0, 360)

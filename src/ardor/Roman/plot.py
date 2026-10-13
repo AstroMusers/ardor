@@ -1,4 +1,5 @@
 #%%
+import os
 from matplotlib import pyplot as plt
 import numpy as np
 from astropy.coordinates import SkyCoord, Angle
@@ -7,13 +8,18 @@ from astropy.table import Table
 from astropy.visualization import astropy_mpl_style
 import matplotlib.font_manager as fm
 import matplotlib.patheffects as pe
+
+
 def lm_font():
     font_path = '/ugrad/whitsett.n/fonts/latin-modern-roman/lmroman10-regular.otf'
-    fm.fontManager.addfont(font_path)
-    plt.rcParams['font.family'] = 'Latin Modern Roman'
-    plt.rcParams['font.sans-serif'] = ['Latin Modern Roman']
-    plt.rcParams['mathtext.fontset'] = 'custom'
-    plt.rcParams['mathtext.rm'] = 'Latin Modern Roman'
+    if os.path.exists(font_path):
+        fm.fontManager.addfont(font_path)
+        plt.rcParams['font.family'] = 'Latin Modern Roman'
+        plt.rcParams['font.sans-serif'] = ['Latin Modern Roman']
+        plt.rcParams['mathtext.fontset'] = 'custom'
+        plt.rcParams['mathtext.rm'] = 'Latin Modern Roman'
+
+
 lm_font()
 
 # # Field geometry (Galactic)

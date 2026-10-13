@@ -1,8 +1,14 @@
 from astropy.coordinates import SkyCoord
 import astropy.units as units
-from dustmaps.bayestar import BayestarQuery
 import numpy as np
-from dustmaps.decaps import DECaPSQuery, DECaPSQueryLite
+
+try:
+    from dustmaps.bayestar import BayestarQuery
+    from dustmaps.decaps import DECaPSQuery, DECaPSQueryLite
+except ImportError:
+    BayestarQuery = None
+    DECaPSQuery = None
+    DECaPSQueryLite = None
 
 def get_ebv(l, b, distance, catalog = 'Bayestar2019', mode = 'samples'):
     """
@@ -16,6 +22,9 @@ def get_ebv(l, b, distance, catalog = 'Bayestar2019', mode = 'samples'):
     Returns:
     array: E(B-V) values at the specified coordinates and distances.
     """
+    if BayestarQuery is None or DECaPSQueryLite is None:
+        raise ImportError("dustmaps is required to query dust maps. Install with: pip install dustmaps")
+
     # Ensure that the Bayestar dust map is downloaded and available
     if catalog == 'Bayestar2019':
         query = BayestarQuery(max_samples=None)

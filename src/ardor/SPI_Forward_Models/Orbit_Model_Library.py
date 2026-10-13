@@ -11,6 +11,7 @@ import pandas as pd
 from astropy import constants as c
 from scipy.optimize import root_scalar
 from scipy.optimize import newton
+from tdpy.numerics import find_nearest
 ##This defines the stellar parameters relevant in a magnetic star-planet induced flare.
 ##The parameters are mass (in solar masses), distance (in parsecs), luminosity
 ##(in log(L_{solar})), spectral class (O,B,A,F,G,K,M), and optional parameters are
@@ -19,19 +20,19 @@ from scipy.optimize import newton
 
 ##For the most part, all parameters are converted to CGS units if they are not
 ##already, except for luminosity, which is kept in Watts. This is because the
-##interaction energy is quoted in Joules/Watts. It is converted later. 
+##interaction energy is quoted in Joules/Watts. It is converted later.
 ##Typical terminal stellar windspeed is estimated to be approximately solar-like
 ##at 400 km/s.
 
 ##The mass-loss rate is assumed to be primarily a function of spectral type,
-##with more massive, hotter stars undergoing more mass loss, and cooler, 
+##with more massive, hotter stars undergoing more mass loss, and cooler,
 ##less massive and convective stars, losing less. This is based on empirical
 ##trends from various sources.
 
-##Most stellar magnetic fields are not known; thus, it is approximated by 
+##Most stellar magnetic fields are not known; thus, it is approximated by
 ##stellar age, following an empirical power law of -1.32. Additionally,
 ##magnetic fields can be approximated by another empirical power law of
-##power -0.655. 
+##power -0.655.
 
 ##A crucial assumption of this code is that the stellar magnetic fields are
 ##approximately dipolar; consequently, the Alfven surface can be estimated
@@ -45,7 +46,7 @@ class Star:
         """
         The `Star` class initializes with basic physical parameters found on, e.g., the Exoplanet Archive
         and generates the predicted polar magnetic field strength as well as the median Alfven surface
-        radius based on various empirical trends found in literature. The results generally carry large 
+        radius based on various empirical trends found in literature. The results generally carry large
         uncertainties, and should be taken with caution, particularly the alfven surface estimates.
 
         Parameters
@@ -83,7 +84,7 @@ class Star:
             self.mass = mass
         if radius == None:
             radius = mass**0.8
-            self.radius = (mass**0.8)*6.957e10 
+            self.radius = (mass**0.8)*6.957e10
         self.radius = radius*6.957e10
         self.age = age
         self.dist = dist*3.086e18
@@ -102,7 +103,7 @@ class Star:
             self.B = 10**6.63/(self.age**0.655)
         elif age != None and p_rot != None and B == None:
             self.B = (10**1.98/(0.25*p_rot**1.32)+ 0.75*10**6.63/(age**0.655))
-        
+
         if self.B != None and self.windspeed != None and self.massloss != None:
             self.eta = ((self.B)**2 * (self.radius)**2)/((self.windspeed)*(self.massloss*6.306*10**25))
         if alfven != None:
@@ -160,17 +161,17 @@ class Star:
             self.massloss_median = mass_loss_list[2500]
             self.massloss_lower = -np.abs(self.massloss_median - mass_loss_list[1600])
             self.massloss_upper = np.abs(self.massloss_median - mass_loss_list[3400])
-            
-            
-        
-        
+
+
+
+
 ##This defines the planet. Since little is known about the parameters which
 ##dictate exoplanetary magnetic fields, this is manually inputted. The radius,
 ##eccentricity and semi-major axis, as well as the occultation phase, are the
 ##only other planetary parameters. Since this class keeps track of the orbital
 ##distance to the barycenter (assumed to be the host star), an 'orbital resolution'
 ##is defined which allows the user to simulate the instrument's phase
-##sensitivity. 
+##sensitivity.
 
 ##The radius is given in Jupiter radii, the semi-major axis in AU, and the
 ##magnetic field strength in Gauss. The phase related parameters are in radians.
@@ -178,7 +179,7 @@ class Planet:
     def __init__(self, radius, period, a, e, B, arg_periastron=0, orbit_length=100,inclination=90, star = None, compute_period = False):
         '''
         The `Planet` class initializes with basic physical parameters found on, e.g., the Exoplanet Archive
-        and generates the orbital geometry of a system, including orbital distances as a function of time 
+        and generates the orbital geometry of a system, including orbital distances as a function of time
         and phase which is generated using the Newton-Raphson method.
         Parameters
         ----------
@@ -241,20 +242,20 @@ class Planet:
         #         self.magnetosphere.append(2*(2*1.16)**(1/3)*(self.B/(star.B*(3.4*star.radius/(dist*1.496e+13))**2))*(self.radius/7.149e9))
         #     self.v = np.sqrt(6.67e-8*star.mass*1.989e+33*(2/(self.position*1.496e+13)-1/(self.a*1.496e+13)))/(1e5)
         #     self.magnetosphere = np.array(self.magnetosphere)
-        
 
-        
+
+
 
 
 
 ##This interaction function takes as input a star and planet class, and will
-##generate an array corresponding to a phase-dependent luminosity increase in 
+##generate an array corresponding to a phase-dependent luminosity increase in
 ##the host star. The luminosity increase follows the analysis by Antonio
 ##Lanza of weak-moderate stellar field strength. The energy is proportional
 ##to (B_{star}^2)(R_{star}^3) * (B_{planet}/B_{star})*(1/(star_planet distance/R_{star})^2)
 ##That is, the larger the star, the stronger the B field of the star, the
 ##stronger the B field of the planet to the star, and the closeness of approach
-##of the planet all dictate the energy output. 
+##of the planet all dictate the energy output.
 
 ##The flare itself is given some energy based on the above relation. Then the
 ##total flare energy is released over some quasi-random timescale
@@ -262,8 +263,8 @@ class Planet:
 
 ##The assumption is that the flare interaction cannot occur if the planet
 ##is not within its host's Alfven radius. The flare occurence can be modified
-##by any scaling factor one wishes. As it stands, the probability is just a 
-##linear increse towards some arbitrary probability as the orbit gets closer 
+##by any scaling factor one wishes. As it stands, the probability is just a
+##linear increse towards some arbitrary probability as the orbit gets closer
 ##to the star, though there is no real basis behind it other than intuition.
 ##The probability is normalized to each step, so increasing the step size
 ##will not increase the total probability of a flare.
@@ -350,7 +351,7 @@ def true_anomaly(E, e):
     return E + 2*np.arctan((beta*np.sin(E))/(1-beta*np.cos(E)))
 def elliptical_dist(a, e, theta):
     '''
-    Generates instantenous separation of a planetary orbit as function of 
+    Generates instantenous separation of a planetary orbit as function of
     true anomaly.
 
     Parameters
@@ -420,28 +421,6 @@ def orbit_pos_v_time(period, e, a, orbit_length , phase=False, arg_periastron = 
         return np.array(time_list), np.array(position)
 
 
-def find_nearest(array, value):
-    '''
-    Takes in an array and value and returns the index of the closest value
-    in the array.
-
-    Parameters
-    ----------
-    array : np array
-        Array to search.
-    value : float
-        Value to find the closest in the array.
-
-    Returns
-    -------
-    idx : int
-        Index in the array that most closely matches the value passed.
-
-    '''
-    array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
-    return idx
-
 def interaction(star, planet):
     '''
     Determines the flare energy predicted by an induced flare following the prescription
@@ -477,7 +456,7 @@ def arg_peri_to_epoch(arg, e, a, period, tran_epoch = 0, err = None):
     Parameters
     ----------
     arg : float
-        Argument of periastron, in degrees. The argument of ascending node is 
+        Argument of periastron, in degrees. The argument of ascending node is
         when the planet is at quadrature, with the planet approaching the observer.
     transit_epoch : float
         Transit epoch, in BJD.
@@ -492,7 +471,7 @@ def arg_peri_to_epoch(arg, e, a, period, tran_epoch = 0, err = None):
     -------
     delta_epoch : float
         The time difference between the transit epoch and the periastron epoch.
-        Returns in days. 
+        Returns in days.
 
     '''
     err[0] = np.abs(err[0])
@@ -501,7 +480,7 @@ def arg_peri_to_epoch(arg, e, a, period, tran_epoch = 0, err = None):
         print('No argument of periastron!')
         return
     if  np.isnan(err[0]) == True or np.isnan(err[1]) == True:
-        err[0] = 0.2*arg 
+        err[0] = 0.2*arg
         err[1] = -0.2*arg
     if err == None:
         arg_theta = (arg/360)*2*np.pi
@@ -678,7 +657,7 @@ def Estimate_Alfven_Params(NEA_csv_directory, pl_B = 100):
     for idx, planet in enumerate(planets['pl_name']):
         # Compute periastron epoch if not known
         if np.isnan(planets['pl_orbtper'].iloc[idx]) == True and np.isnan(planets['pl_tranmid'].iloc[idx]) == False and np.isnan(planets['pl_orblper'].iloc[idx]) == False and np.isnan(planets['pl_orbeccen'].iloc[idx]) == False and planets['pl_orbeccen'].iloc[idx] != 0 and planets['pl_orbper'].iloc[idx] < 100:
-            arg_peri, arg_peri_lower, arg_peri_upper = arg_peri_to_epoch(planets['pl_orblper'].iloc[idx], planets['pl_orbeccen'].iloc[idx], planets['pl_orbsmax'].iloc[idx], planets['pl_orbper'].iloc[idx], tran_epoch = 
+            arg_peri, arg_peri_lower, arg_peri_upper = arg_peri_to_epoch(planets['pl_orblper'].iloc[idx], planets['pl_orbeccen'].iloc[idx], planets['pl_orbsmax'].iloc[idx], planets['pl_orbper'].iloc[idx], tran_epoch =
                               planets['pl_tranmid'].iloc[idx], err = [planets['pl_orblpererr2'].iloc[idx], planets['pl_orblpererr1'].iloc[idx]])
             peri_epoch.append(arg_peri)
             peri_epoch_lower.append(arg_peri_lower)
@@ -696,7 +675,7 @@ def Estimate_Alfven_Params(NEA_csv_directory, pl_B = 100):
 def transit_to_periastron_epoch(P, e, omega_deg):
     """
     Compute the time of periastron passage given the transit epoch.
-    
+
     Parameters:
         P : float
             Orbital period (same units as T0).
@@ -706,7 +685,7 @@ def transit_to_periastron_epoch(P, e, omega_deg):
             Argument of periastron in degrees (star's frame).
         T0 : float
             Transit epoch.
-            
+
     Returns:
         Tp : float
             Periastron epoch (same units as T0).
@@ -716,7 +695,7 @@ def transit_to_periastron_epoch(P, e, omega_deg):
     f_transit = np.pi/2 - (np.pi + omega)
     E = 2 * np.arctan(np.sqrt((1-e)/(1+e))*np.tan(f_transit/2))
     Tp = (P/(2*np.pi))*(E-e*np.sin(E))
-    
+
     return Tp
 
 

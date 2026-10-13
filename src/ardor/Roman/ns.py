@@ -20,18 +20,25 @@ from functools import partial
 import multiprocessing as mp
 import sys
 from pathlib import Path
-from ardor.Roman.flare_color import get_data_file
+from ardor.Roman.flare_model import (
+    RATIO_GRID_FILES,
+    baseline_model,
+    infer_ratio_filter_from_path,
+    infer_ratio_grid_bounds,
+    interpolate_ratio,
+    load_ratio_grid,
+    log_likelihood,
+    model_flux,
+    normalize_ratio_filter,
+    ratio_model_value,
+    resolve_ratio_grid_path,
+    split_theta,
+)
 import numpy as np
 import pandas as pd
-from scipy.interpolate import CubicSpline, RegularGridInterpolator
 from scipy.stats import gaussian_kde
 from scipy.special import erfcinv
 
-
-RATIO_GRID_FILES = {
-    "F087": "F087.csv",
-    "F213": "F213.csv",
-}
 
 try:
     from dynesty import NestedSampler
@@ -41,7 +48,7 @@ except ImportError as exc:
     ) from exc
 
 try:
-    from ardor.Flares.Flare import aflare1
+    from ardor.Flares.aflare import aflare1
 except ImportError:
     # Allow running this script directly from the Roman folder.
     repo_root = Path(__file__).resolve().parents[1]
@@ -49,26 +56,6 @@ except ImportError:
     if ardor_src.exists():
         sys.path.insert(0, str(ardor_src))
     from ardor.Flares.aflare import aflare1
-
-
-def baseline_model(t, baseline_type="none", params=None, spline_knots=None):
-    """Evaluate a baseline model on time array t."""
-    if baseline_type == "none":
-        return np.zeros_like(t)
-
-    if baseline_type == "sine":
-        c0, amp, freq, phase = params
-        t0 = 0.5 * (np.min(t) + np.max(t))
-        return c0 + amp * np.sin(2.0 * np.pi * freq * (t - t0) + phase)
-
-    if baseline_type == "spline":
-        if spline_knots is None:
-            spline_knots = np.linspace(np.min(t), np.max(t), len(params))
-
-        cs = CubicSpline(spline_knots, np.asarray(params), bc_type="natural")
-        return cs(t)
-
-    raise ValueError(f"Unknown baseline_type: {baseline_type}")
 
 
 def load_flare_data_csv(filepath):
@@ -90,94 +77,6 @@ def load_flare_data_csv(filepath):
     flux = df["flux"].to_numpy(dtype=float)
     yerr = df["yerr"].to_numpy(dtype=float)
     return t, flux, yerr
-
-
-def normalize_ratio_filter(ratio_filter):
-    """Normalize a ratio-grid filter name and validate it."""
-    if ratio_filter is None or pd.isna(ratio_filter):
-        return "F087"
-
-    normalized = str(ratio_filter).strip().upper()
-    if normalized not in RATIO_GRID_FILES:
-        allowed = ", ".join(sorted(RATIO_GRID_FILES))
-        raise ValueError(f"Unknown ratio_filter '{ratio_filter}'. Expected one of: {allowed}")
-    return normalized
-
-
-def resolve_ratio_grid_path(ratio_filter="F087", ratio_grid_csv=None):
-    """Resolve the grid path from a named filter, unless an explicit path is given."""
-    if ratio_grid_csv is not None:
-        return Path(ratio_grid_csv)
-
-    normalized = normalize_ratio_filter(ratio_filter)
-    return Path(get_data_file(RATIO_GRID_FILES[normalized]))
-
-
-def infer_ratio_filter_from_path(ratio_grid_path):
-    """Infer the named ratio filter from a grid file path when possible."""
-    filename = Path(ratio_grid_path).name.upper()
-    for ratio_filter, mapped_name in RATIO_GRID_FILES.items():
-        if filename == mapped_name.upper():
-            return ratio_filter
-    return "CUSTOM"
-
-
-def load_ratio_grid(grid_csv_path):
-    """Load the Teff/E(B-V) ratio grid and build a 2D interpolator.
-
-    Supported CSV layouts:
-    1. Legacy format with a ``Teff_K`` column and ``EBV_*`` data columns.
-    2. Matrix format with Teff values in the first column/index and EBV values
-       as raw numeric column headers.
-    """
-    df = pd.read_csv(grid_csv_path)
-
-    if "Teff_K" in df.columns:
-        teff_values = df["Teff_K"].to_numpy(dtype=float)
-        ebv_columns = [col for col in df.columns if col.startswith("EBV_")]
-        if not ebv_columns:
-            raise ValueError(f"Ratio grid must include EBV_* columns: {grid_csv_path}")
-
-        ebv_values = np.array([float(col.replace("EBV_", "")) for col in ebv_columns], dtype=float)
-        ratio_values = df[ebv_columns].to_numpy(dtype=float)
-    else:
-        df = pd.read_csv(grid_csv_path, index_col=0)
-        try:
-            teff_values = df.index.to_numpy(dtype=float)
-            ebv_values = np.array(df.columns, dtype=float)
-        except ValueError as exc:
-            raise ValueError(
-                "Ratio grid must use either a 'Teff_K' column with 'EBV_*' columns "
-                "or a numeric Teff index with numeric EBV headers: "
-                f"{grid_csv_path}"
-            ) from exc
-
-        ratio_values = df.to_numpy(dtype=float)
-
-    interpolator = RegularGridInterpolator(
-        (teff_values, ebv_values),
-        ratio_values,
-        bounds_error=False,
-        fill_value=np.nan,
-    )
-
-    return {
-        "path": str(grid_csv_path),
-        "teff_values": teff_values,
-        "ebv_values": ebv_values,
-        "ratio_values": ratio_values,
-        "interpolator": interpolator,
-    }
-
-
-def infer_ratio_grid_bounds(ratio_grid):
-    """Return the natural Teff and E(B-V) bounds implied by the ratio grid."""
-    return {
-        "teff_min": float(np.min(ratio_grid["teff_values"])),
-        "teff_max": float(np.max(ratio_grid["teff_values"])),
-        "ebv_min": float(np.min(ratio_grid["ebv_values"])),
-        "ebv_max": float(np.max(ratio_grid["ebv_values"])),
-    }
 
 
 def build_kde_prior_from_samples(
@@ -320,12 +219,6 @@ def prepare_param_specs(param_specs, custom_prior_samples=None):
         else:
             prepared_specs.append(dict(spec))
     return prepared_specs
-
-
-def interpolate_ratio(teff, ebv, ratio_grid):
-    """Evaluate the interpolated Teff/E(B-V) ratio model at a single point."""
-    point = np.array([float(teff), float(ebv)], dtype=float)
-    return float(ratio_grid["interpolator"](point))
 
 
 def load_ratio_data_csv(filepath, aux_quiescent_flux=None, flare_quiescent_flux=None):
@@ -575,134 +468,14 @@ def prior_transform(
     return np.array(params)
 
 
-def split_theta(theta, baseline_type="none", n_spline_knots=5, use_ratio_model=False):
-    """Split the sampled parameter vector into flare, baseline, and ratio-model blocks."""
-    parts = {
-        "tpeak": float(theta[0]),
-        "fwhm": float(theta[1]),
-        "ampl": float(theta[2]),
-        "sigma": float(theta[3]),
-    }
-
-    idx = 4
-    if baseline_type == "sine":
-        parts["baseline_params"] = np.asarray(theta[idx:idx + 4], dtype=float)
-        idx += 4
-    elif baseline_type == "spline":
-        parts["baseline_params"] = np.asarray(theta[idx:idx + n_spline_knots], dtype=float)
-        idx += n_spline_knots
-    else:
-        parts["baseline_params"] = np.array([], dtype=float)
-
-    if use_ratio_model:
-        parts["teff"] = float(theta[idx])
-        parts["ebv"] = float(theta[idx + 1])
-
-    return parts
-
-
-def model_flux(theta, t, baseline_type="none", spline_knots=None, n_spline_knots=5, use_ratio_model=False):
-    """Return full flare+baseline model flux for a parameter vector."""
-    parts = split_theta(
-        theta,
-        baseline_type=baseline_type,
-        n_spline_knots=n_spline_knots,
-        use_ratio_model=use_ratio_model,
-    )
-    tpeak = parts["tpeak"]
-    fwhm = parts["fwhm"]
-    ampl = parts["ampl"]
-
-    if baseline_type == "none":
-        baseline = np.zeros_like(t)
-    elif baseline_type == "sine":
-        baseline = baseline_model(t, "sine", parts["baseline_params"], spline_knots=spline_knots)
-    elif baseline_type == "spline":
-        baseline = baseline_model(t, "spline", parts["baseline_params"], spline_knots=spline_knots)
-    else:
-        raise ValueError(f"Unknown baseline_type: {baseline_type}")
-
-    return 1.0 + aflare1(t, tpeak, fwhm, ampl) + baseline
-
-
-def ratio_model_value(
-    theta,
-    ratio_time,
-    ratio_grid,
-    baseline_type="none",
-    n_spline_knots=5,
-    flare_quiescent_flux=None,
-):
-    """Predict the auxiliary single-point observable from flare amplitude and grid ratio."""
-    parts = split_theta(theta, baseline_type=baseline_type, n_spline_knots=n_spline_knots, use_ratio_model=True)
-    expected_ratio = interpolate_ratio(parts["teff"], parts["ebv"], ratio_grid)
-    if not np.isfinite(expected_ratio):
-        return np.nan, np.nan
-
-    flare_value = float(aflare1(np.array([ratio_time]), parts["tpeak"], parts["fwhm"], parts["ampl"])[0])
-    if flare_quiescent_flux is not None:
-        flare_value *= float(flare_quiescent_flux)
-    return expected_ratio * flare_value, expected_ratio
-
-
-def log_likelihood(
-    theta,
-    t,
-    flux,
-    yerr,
-    baseline_type="none",
-    spline_knots=None,
-    n_spline_knots=5,
-    ratio_data=None,
-    ratio_grid=None,
-    flare_quiescent_flux=None,
-):
-    """Gaussian log-likelihood for the flare data plus an optional auxiliary point."""
-    sigma = theta[3]
-
-    model = model_flux(
-        theta,
-        t,
-        baseline_type=baseline_type,
-        spline_knots=spline_knots,
-        n_spline_knots=n_spline_knots,
-        use_ratio_model=ratio_data is not None and ratio_grid is not None,
-    )
-    var = yerr**2 + sigma**2
-
-    loglike = -0.5 * np.sum((flux - model) ** 2 / var + np.log(2.0 * np.pi * var))
-
-    if ratio_data is not None:
-        if ratio_grid is None:
-            raise ValueError("ratio_grid must be provided when ratio_data is used")
-        aux_model, _ = ratio_model_value(
-            theta,
-            ratio_data["time"],
-            ratio_grid,
-            baseline_type=baseline_type,
-            n_spline_knots=n_spline_knots,
-            flare_quiescent_flux=flare_quiescent_flux if ratio_data.get("input_mode") == "absolute" else None,
-        )
-        if not np.isfinite(aux_model):
-            return -np.inf
-        aux_var = ratio_data["err"] ** 2
-        loglike += -0.5 * (
-            (ratio_data["value"] - aux_model) ** 2 / aux_var + np.log(2.0 * np.pi * aux_var)
-        )
-
-    return loglike
-
-
 def weighted_quantile(values, quantiles, sample_weight):
     """Compute weighted quantiles for posterior summaries."""
-    sorter = np.argsort(values)
-    values = values[sorter]
-    weights = sample_weight[sorter]
-
-    cdf = np.cumsum(weights)
-    cdf /= cdf[-1]
-
-    return np.interp(quantiles, cdf, values)
+    try:
+        from tdpy.numerics import weighted_quantile as _weighted_quantile
+        return _weighted_quantile(values, quantiles, sample_weight=sample_weight)
+    except ImportError:
+        sorter = np.argsort(values)
+        return np.interp(quantiles, np.cumsum(sample_weight[sorter]) / np.sum(sample_weight), values[sorter])
 
 
 def summarize_posterior(samples, weights, names):
@@ -718,11 +491,11 @@ def summarize_posterior(samples, weights, names):
 
 def weighted_median_params(samples, weights):
     """Return weighted median parameter vector."""
-    medians = []
-    for i in range(samples.shape[1]):
-        med = weighted_quantile(samples[:, i], [0.50], weights)[0]
-        medians.append(med)
-    return np.array(medians)
+    try:
+        from tdpy.numerics import weighted_median as _weighted_median
+        return _weighted_median(samples, sample_weight=weights, axis=0)
+    except ImportError:
+        return np.array([weighted_quantile(samples[:, i], [0.50], weights)[0] for i in range(samples.shape[1])])
 
 
 def make_corner_plot(samples, weights, names, truths=None, output_path="ns_corner.png"):

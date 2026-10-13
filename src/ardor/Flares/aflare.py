@@ -6,18 +6,34 @@ Could also put other simple flare models in here, e.g. polynomial from Balona (2
 
 import numpy as np
 
+try:
+    from tdpy.exoplanet import davenport_flare_area, evaluate_davenport_flare
+except ImportError:
+    def evaluate_davenport_flare(time, peak_time, fwhm, amplitude):
+        t = np.asarray(time, dtype=float)
+        phase = (t - peak_time) / fwhm
+        rise = (
+            1.00000
+            + 1.94053 * phase
+            - 0.175084 * phase**2
+            - 2.24588 * phase**3
+            - 1.12498 * phase**4
+        )
+        decay = 0.689008 * np.exp(-1.60053 * phase) + 0.302963 * np.exp(-0.278318 * phase)
+        shape = np.where(phase < -1.0, 0.0, np.where(phase <= 0.0, rise, decay))
+        shape = np.clip(shape, 0.0, None)
+        return shape * np.abs(amplitude)
+
+    def davenport_flare_area(fwhm, amplitude):
+        return np.abs(amplitude) * np.abs(fwhm) * 1.8268848560866364
+
+
 def aflare(t, p):
     """
     This is the Analytic Flare Model from the flare-morphology paper.
     Reference Davenport et al. (2014) http://arxiv.org/abs/1411.3723
 
     Note: this model assumes the flux before the flare is zero centered
-
-    Note: many sub-flares can be modeled by this method by changing the
-    number of parameters in "p". As a result, this routine may not work
-    for fitting with methods like scipy.optimize.curve_fit, which require
-    a fixed number of free parameters. Instead, for fitting a single peak
-    use the aflare1 method.
 
     Parameters
     ----------
@@ -31,26 +47,10 @@ def aflare(t, p):
     flare : 1-d array
         The flux of the flare model evaluated at each time
     """
-    _fr = [1.00000, 1.94053, -0.175084, -2.24588, -1.12498]
-    _fd = [0.689008, -1.60053, 0.302963, -0.278318]
-
-    Nflare = int( np.floor( (len(p)/3.0) ) )
-
-    flare = np.zeros_like(t)
-    # compute the flare model for each flare
+    Nflare = int(np.floor(len(p) / 3.0))
+    flare = np.zeros_like(t, dtype=float)
     for i in range(Nflare):
-        outm = np.piecewise(t, [(t<= p[0+i*3]) * (t-p[0+i*3])/p[1+i*3] > -1.,
-                                (t > p[0+i*3])],
-                            [lambda x: (_fr[0]+                             # 0th order
-                                        _fr[1]*((x-p[0+i*3])/p[1+i*3])+     # 1st order
-                                        _fr[2]*((x-p[0+i*3])/p[1+i*3])**2.+  # 2nd order
-                                        _fr[3]*((x-p[0+i*3])/p[1+i*3])**3.+  # 3rd order
-                                        _fr[4]*((x-p[0+i*3])/p[1+i*3])**4. ),# 4th order
-                             lambda x: (_fd[0]*np.exp( ((x-p[0+i*3])/p[1+i*3])*_fd[1] ) +
-                                        _fd[2]*np.exp( ((x-p[0+i*3])/p[1+i*3])*_fd[3] ))]
-                            ) * p[2+i*3] # amplitude
-        flare = flare + outm
-
+        flare = flare + evaluate_davenport_flare(t, p[i * 3], p[i * 3 + 1], p[i * 3 + 2])
     return flare
 
 
@@ -58,11 +58,6 @@ def aflare1(t, tpeak, fwhm, ampl):
     '''
     The Analytic Flare Model evaluated for a single-peak (classical).
     Reference Davenport et al. (2014) http://arxiv.org/abs/1411.3723
-
-    Use this function for fitting classical flares with most curve_fit
-    tools.
-
-    Note: this model assumes the flux before the flare is zero centered
 
     Parameters
     ----------
@@ -80,35 +75,14 @@ def aflare1(t, tpeak, fwhm, ampl):
     flare : 1-d array
         The flux of the flare model evaluated at each time
     '''
-    _fr = [1.00000, 1.94053, -0.175084, -2.24588, -1.12498]
-    _fd = [0.689008, -1.60053, 0.302963, -0.278318]
+    return evaluate_davenport_flare(t, tpeak, fwhm, ampl)
 
-    flare = np.piecewise(t, [(t<= tpeak) * (t-tpeak)/fwhm > -1.,
-                                (t > tpeak)],
-                            [lambda x: (_fr[0]+                       # 0th order
-                                        _fr[1]*((x-tpeak)/fwhm)+      # 1st order
-                                        _fr[2]*((x-tpeak)/fwhm)**2.+  # 2nd order
-                                        _fr[3]*((x-tpeak)/fwhm)**3.+  # 3rd order
-                                        _fr[4]*((x-tpeak)/fwhm)**4. ),# 4th order
-                             lambda x: (_fd[0]*np.exp( ((x-tpeak)/fwhm)*_fd[1] ) +
-                                        _fd[2]*np.exp( ((x-tpeak)/fwhm)*_fd[3] ))]
-                            ) * np.abs(ampl) # amplitude
-
-    return flare
 
 def flare_total_area(fwhm, ampl):
-    # Polynomial rise coefficients
-    _fr = np.array([1.00000, 1.94053, -0.175084, -2.24588, -1.12498])
-    # Exponential decay coefficients
-    _fd = np.array([0.689008, -1.60053, 0.302963, -0.278318])
+    """Analytical integrated area for Davenport et al. (2014) flare model."""
+    return davenport_flare_area(fwhm, ampl)
 
-    # Rise integral: sum_{n=0}^{4} f_r,n * (-1)^{n+1} / (n+1)
-    rise_integral = np.sum([_fr[n] * (-1)**(n+1) / (n+1) for n in range(5)])
 
-    # Decay integral: -f_d[0]/f_d[1] - f_d[2]/f_d[3]
-    decay_integral = -_fd[0]/_fd[1] - _fd[2]/_fd[3]
-
-    # Total area = FWHM * amplitude * (rise + decay)
-    total_area = ampl * fwhm * (rise_integral + decay_integral)
-    
-    return total_area
+def exp_decay(x, a, b, c):
+    """Exponential decay function for flare fitting: a * exp(-b * x) + c."""
+    return a * np.exp(-b * x) + c

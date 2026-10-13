@@ -17,20 +17,16 @@ from matplotlib import rcParams
 from collections import namedtuple
 from matplotlib import font_manager
 from matplotlib.font_manager import FontProperties
+import os
 import matplotlib.cm as cm
 from matplotlib.ticker import NullFormatter
 import math
 from pathlib import Path
-for fontpath in font_manager.findSystemFonts(fontpaths=None, fontext='ttf'):
-    print(fontpath.lower())
-    if 'lmroman10-regular'.lower() in fontpath.lower():
-        path = fontpath
-for fontpath in font_manager.findSystemFonts(fontpaths=None, fontext='ttf'):
-    if 'lmroman10-italic'.lower() in fontpath.lower():
-        italicpath = fontpath
-        print(italicpath)
-font = FontProperties(fname='/ugrad/whitsett.n/fonts/latin-modern-roman/lmroman10-regular.otf')
-italicfont = FontProperties(fname='/ugrad/whitsett.n/fonts/latin-modern-roman/lmroman10-italic.otf')
+
+_font_path = '/ugrad/whitsett.n/fonts/latin-modern-roman/lmroman10-regular.otf'
+_italic_font_path = '/ugrad/whitsett.n/fonts/latin-modern-roman/lmroman10-italic.otf'
+font = FontProperties(fname=_font_path) if os.path.exists(_font_path) else FontProperties()
+italicfont = FontProperties(fname=_italic_font_path) if os.path.exists(_italic_font_path) else FontProperties()
 rcParams["mathtext.fontset"] = "cm"
 def linear(x, alpha, beta):
     return alpha*x + beta
@@ -68,7 +64,7 @@ def FFD_Generator(data_dir, output_csv=None):
                 dlogz = np.delete(dlogz, count)
                 count -= 1
             count += 1
-            
+
         energies[::-1].sort()
         energies = energies[~np.isnan(energies)]
         energies = np.log10(energies)

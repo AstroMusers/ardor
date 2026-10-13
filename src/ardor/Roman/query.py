@@ -39,40 +39,41 @@ def smallest_ra_interval_deg(ra_deg):
     crosses_zero = ramin > ramax
     return ramin, ramax, crosses_zero
 
-# Sample the 4 edges of the Galactic rectangle
-N = 400
-l_line = np.linspace(lmin.value, lmax.value, N)
-b_line = np.linspace(bmin.value, bmax.value, N)
 
-edge_l = np.concatenate([
-    l_line,                     # bottom edge (b=bmin)
-    l_line,                     # top edge    (b=bmax)
-    np.full(N, lmin.value),     # left edge   (l=lmin)
-    np.full(N, lmax.value),     # right edge  (l=lmax)
-])
-edge_b = np.concatenate([
-    np.full(N, bmin.value),
-    np.full(N, bmax.value),
-    b_line,
-    b_line,
-])
+def query_gaia_field(output_csv=None, N=400):
+    """Query Gaia DR3 for sources within the Roman galactic field."""
+    l_line = np.linspace(lmin.value, lmax.value, N)
+    b_line = np.linspace(bmin.value, bmax.value, N)
 
-gal_edge = SkyCoord(l=edge_l * u.deg, b=edge_b * u.deg, frame="galactic")
-icrs_edge = gal_edge.icrs
+    edge_l = np.concatenate([
+        l_line,                     # bottom edge (b=bmin)
+        l_line,                     # top edge    (b=bmax)
+        np.full(N, lmin.value),     # left edge   (l=lmin)
+        np.full(N, lmax.value),     # right edge  (l=lmax)
+    ])
+    edge_b = np.concatenate([
+        np.full(N, bmin.value),
+        np.full(N, bmax.value),
+        b_line,
+        b_line,
+    ])
 
-ra_vals = icrs_edge.ra.deg
-dec_vals = icrs_edge.dec.deg
+    gal_edge = SkyCoord(l=edge_l * u.deg, b=edge_b * u.deg, frame="galactic")
+    icrs_edge = gal_edge.icrs
 
-ramin, ramax, ra_wrap = smallest_ra_interval_deg(ra_vals)
-decmin = float(np.min(dec_vals))
-decmax = float(np.max(dec_vals))
+    ra_vals = icrs_edge.ra.deg
+    dec_vals = icrs_edge.dec.deg
 
-if not ra_wrap:
-    ra_clause = f"ra BETWEEN {ramin:.8f} AND {ramax:.8f}"
-else:
-    ra_clause = f"(ra >= {ramin:.8f} OR ra <= {ramax:.8f})"
+    ramin, ramax, ra_wrap = smallest_ra_interval_deg(ra_vals)
+    decmin = float(np.min(dec_vals))
+    decmax = float(np.max(dec_vals))
 
-query = f"""
+    if not ra_wrap:
+        ra_clause = f"ra BETWEEN {ramin:.8f} AND {ramax:.8f}"
+    else:
+        ra_clause = f"(ra >= {ramin:.8f} OR ra <= {ramax:.8f})"
+
+    query = f"""
 SELECT
     source_id,
     ra, dec,
@@ -92,9 +93,14 @@ WHERE
     AND distance_gspphot IS NOT NULL
 """
 
-job = Gaia.launch_job_async(query)
-tbl = job.get_results()
-out_csv = os.path.join(os.getcwd(), "gaia_results.csv")
-tbl.write(out_csv, format="csv", overwrite=True)
-print(f"Saved CSV: {out_csv}")
-# ...existing code...
+    job = Gaia.launch_job_async(query)
+    tbl = job.get_results()
+    if output_csv is None:
+        output_csv = os.path.join(os.getcwd(), "gaia_results.csv")
+    tbl.write(output_csv, format="csv", overwrite=True)
+    print(f"Saved CSV: {output_csv}")
+    return tbl
+
+
+if __name__ == "__main__":
+    query_gaia_field()

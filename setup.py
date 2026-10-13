@@ -15,5 +15,17 @@ setup(
    author='Nathan Whitsett',
    author_email='whitsett.n@wustl.edu',
    license='MIT',
-   install_requires=['wheel', 'bar', 'greek'], #external packages as dependencies
+   packages=find_packages(where='src'),
+   package_dir={'': 'src'},
+   install_requires=[
+       'numpy',
+       'scipy',
+       'matplotlib',
+       'pandas',
+       'astropy',
+   ],
+   extras_require={
+      'pcat': ['pcat @ git+https://github.com/tansudaylan/pcat.git'],
+      'allesfitter': ['allesfitter'],
+   },
 )

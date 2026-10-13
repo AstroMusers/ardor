@@ -11,9 +11,9 @@ from pathlib import Path
 from time import perf_counter
 import csv
 try:
-    from Roman.Nested_Sampling.flare_color import create_syn_lc, inject_random_flares
-except ModuleNotFoundError:
-    from Roman.Nested_Sampling.flare_color import create_syn_lc, inject_random_flares
+    from ardor.Roman.flare_color import create_syn_lc, inject_random_flares
+except ImportError:
+    from .flare_color import create_syn_lc, inject_random_flares
 
 
 def _mark_recovered(injection_dict, detected_indices, tolerance=50):
@@ -61,7 +61,7 @@ def Injection_Recovery(
     `flare_color.inject_random_flares`. The generated light curves are then
     converted to relative flux (baseline near 1.0), and recovery is evaluated with
     `Flare.flare_ID` (Tier 1) plus `Flare.tier2` (Tier 2).
-    
+
     Parameters
     ----------
     teff_range : tuple of (float, float) or None
@@ -72,13 +72,13 @@ def Injection_Recovery(
     data = pd.read_csv(catalog_path)
     data = data[np.isfinite(data['Flux']) & np.isfinite(data['Flux_err'])].copy()
     data = data[data['Flux'] > 0]
-    
+
     # Filter by teff range if provided
     if teff_range is not None:
         teff_min, teff_max = teff_range
         data = data[(data['teff_gspphot'] >= teff_min) & (data['teff_gspphot'] <= teff_max)]
         print(f'Filtered to {len(data)} stars in teff range {teff_range}')
-    
+
     # Randomly sample n_stars from the filtered catalog
     if n_stars is not None:
         n_stars = int(min(n_stars, len(data)))
@@ -218,7 +218,7 @@ def Injection_Recovery(
         'timing_file': str(output_time),
     }
 def Injection_Recovery_Grid(data_dir, grid_dir, label = 'T1', energy = False):
-    
+
     data = pd.read_csv(data_dir)
     amp = list(data['Amplitude'])
     FWHM = list(data['FWHM'])
@@ -313,7 +313,7 @@ if __name__ == '__main__':
             continue
         flares = alphas2[idx] * 33 + betas2[idx]
         M.append(10**flares)
-    
+
     gaia_FGK = catalog.loc[(catalog['teff_gspphot'] >= temperature_range1[0]) & (catalog['teff_gspphot'] <= temperature_range1[1]), 'teff_gspphot'].to_list()
     gaia_M = catalog.loc[(catalog['teff_gspphot'] >= temperature_range2[0]) & (catalog['teff_gspphot'] <= temperature_range2[1]), 'teff_gspphot'].to_list()
     total = 0

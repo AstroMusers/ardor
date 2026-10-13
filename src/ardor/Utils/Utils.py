@@ -13,6 +13,7 @@ import json
 from astropy.table import Table
 from astropy.io import ascii
 from ardor.Data_Query.Data_Query import Query_Transit_Solution, Query_Host_Params_TOI, Query_Planet_Parameters
+from tdpy.numerics import find_nearest, find_nearest_index, range_shift, rescale_range
 
 warnings.filterwarnings("ignore")
 def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[], output_dir = None, specifier_column = None):
@@ -58,7 +59,7 @@ def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[],
                     data_2_transfer= np.nan
 
             data_list.append(data_2_transfer)
-            
+
         output_data[header] = data_list
     print(output_data)
     if output_dir == None:
@@ -66,35 +67,7 @@ def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[],
         new_output.to_csv(new_output, index=False)
     elif output_dir != None:
         output_data.to_csv(output_dir, index=False)
-def range_shift(data, a, b, x, y):
-    '''
-    Generates a linear map to take data in range [a,b] to new range of [x,y].
 
-    Parameters
-    ----------
-    data : float
-        Data to linearly map.
-    a : float
-        Lower bound of original data.
-    b : float
-        Upper bound of original data.
-    x : float
-        Lower bound of new data.
-    y : float
-        Upper bound of new data.
-
-    Returns
-    -------
-    new_data: float
-        Linearly transformed data in new range [x,y].
-
-    '''
-    return x + (y-x)/(b-a)*(data-a)
-
-def find_nearest(array, value):
-    array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
-    return idx
 
 def asymmetric_sample(value, upper, lower):
     upper = np.abs(upper)
@@ -198,13 +171,13 @@ def transfer_columns_between_files(
 def round_to_sig_figs(number, sig_figs):
     if number == 0:
         return 0.0
-    
+
     # Determine the magnitude
     magnitude = int(math.floor(math.log10(abs(number))))
-    
+
     # Calculate the scaling factor
     factor = 10**(sig_figs - 1 - magnitude)
-    
+
     # Round and scale back
     rounded_number = round(number * factor) / factor
     return rounded_number
@@ -295,7 +268,7 @@ def add_list_to_csv(csv_path, new_column_name, values_list, output_path=None):
     if output_path is None:
         output_path = csv_path
     df.to_csv(output_path, index=False)
-                        
+
 def copy_output(work_dir, files_to_copy, destination_dir):
     """
     Copies specified files from the working directory to the destination directory.
@@ -330,7 +303,7 @@ def remove_duplicates(catalog_file, host_col_header='Host_ID', time_col_header='
     '''
     Identify and remove flares that occur within 10 minutes of each other in a catalog.
     Creates a new CSV file with duplicates removed.
-    
+
     Parameters
     ----------
     catalog_file : str
@@ -339,7 +312,7 @@ def remove_duplicates(catalog_file, host_col_header='Host_ID', time_col_header='
         Column header for host identifiers. Default is 'Host_ID'.
     time_col_header : str, optional
         Column header for flare times in days (BJD). Default is 'Epoch_BJD'.
-    
+
     Returns
     -------
     cleaned_catalog : pd.DataFrame
@@ -353,49 +326,49 @@ def remove_duplicates(catalog_file, host_col_header='Host_ID', time_col_header='
     if time_col_header not in catalog.columns:
         raise KeyError(f"Column '{time_col_header}' not found in catalog: {catalog_file}")
     catalog[time_col_header] = pd.to_numeric(catalog[time_col_header], errors='coerce')
-    
+
     # Convert 10 minutes to days (10 minutes / (24 hours * 60 minutes))
-    
+
     # Initialize duplicate_flag column
     catalog['duplicate_flag'] = False
-    
+
     # Get unique hosts
     unique_hosts = catalog[host_col_header].unique()
-    
+
     # For each host, flag duplicates
     for host_id in unique_hosts:
         host_indices = catalog[catalog[host_col_header] == host_id].index
-        
+
         if len(host_indices) > 0:
             # Sort indices by time
             host_data = catalog.loc[host_indices].copy()
             host_data = host_data.dropna(subset=[time_col_header])
             sorted_indices = host_data.sort_values(by=time_col_header).index
-            
+
             # Check each flare against the previous one
             for i in range(1, len(sorted_indices)):
                 current_idx = sorted_indices[i]
                 prev_idx = sorted_indices[i-1]
-                
+
                 time_diff = catalog.loc[current_idx, time_col_header] - catalog.loc[prev_idx, time_col_header]
                 if time_diff <= time_threshold_days:
                     catalog.loc[current_idx, 'duplicate_flag'] = True
-    
+
     # Remove duplicates (keep only rows where duplicate_flag is False)
     cleaned_catalog = catalog[catalog['duplicate_flag'] == False].drop(columns=['duplicate_flag']).reset_index(drop=True)
-    
+
     # Generate output filename
     base_name = os.path.splitext(catalog_file)[0]
     output_file = f"{base_name}_v2.csv"
-    
+
     # Save the cleaned catalog
     cleaned_catalog.to_csv(output_file, index=False)
     print(f"✅ Duplicates removed. Cleaned catalog saved to {output_file}")
     print(f"   Original flares: {len(catalog)}, After removing duplicates: {len(cleaned_catalog)}")
-    
+
     return cleaned_catalog
 
-def return_phases(catalog, host_name, host_col_header = 'Host_ID', 
+def return_phases(catalog, host_name, host_col_header = 'Host_ID',
                   time_col_header = 'Epoch_BJD', TOI = False, table = 'pscomppars', energy_threshold = 1e34):
     '''
     Return phases of flares for a given host.
@@ -414,7 +387,7 @@ def return_phases(catalog, host_name, host_col_header = 'Host_ID',
         Minimum energy threshold for flares to be considered. The default is 1e34.
     -------
     phases : dict
-        Returns a dictrionary of phases for each planet around the host. The keys are the planet names, and the values are another dictionary with keys 
+        Returns a dictrionary of phases for each planet around the host. The keys are the planet names, and the values are another dictionary with keys
         'transit_phases', 'periastron_phases', and 'computed_periastron_phases', each containing a list of phases corresponding to the flare times.
 
     '''

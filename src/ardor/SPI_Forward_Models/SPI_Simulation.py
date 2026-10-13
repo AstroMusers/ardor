@@ -8,6 +8,7 @@ Created on Tue Mar 19 20:58:28 2024
 import ardor.Flares.Flare as Flare
 import ardor.Flares.aflare as aflare
 import ardor.Utils.Utils as U
+from tdpy.numerics import find_nearest
 import ardor.SPI_Forward_Models.Orbit_Model_Library as OML
 import numpy as np
 from scipy.integrate import simpson
@@ -15,7 +16,7 @@ import warnings
 from scipy.interpolate import interp1d
 from scipy.stats import vonmises
 import ardor.Utils.Utils as UT
-warnings.filterwarnings("ignore", category=DeprecationWarning)  
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 font = {'family': 'serif',
@@ -25,7 +26,7 @@ font = {'family': 'serif',
         }
 #### FORWARD MODEL PDFS ####
 def SPI_kappa(kappa,loc, num):
-    phase = np.linspace(0,1,num=num)              
+    phase = np.linspace(0,1,num=num)
     base = vonmises.pdf(UT.range_shift(phase, 0, 1, -np.pi, np.pi), kappa = kappa, loc = UT.range_shift(loc, 0, 1, -np.pi, np.pi))*2*np.pi
     return base, phase
 
@@ -38,7 +39,7 @@ def SPI_Geo(period, e, a, Rst, arg_peri, los_factor):
     norm_orbit = (dist)**-3
     for idx, values in enumerate(phase):
         a = U.boundary_conditions(U.range_shift(lower - los_factor, 0, 360, 0, 1), 0, 1)
-        
+
         b = U.boundary_conditions(U.range_shift(upper + los_factor, 0, 360, 0, 1), 0, 1)
 
         if a < b:
@@ -82,7 +83,7 @@ def SPI_Geo_flare_injection(light_curve, period, a, e, Rst, arg_periastron, los_
         flare_rate = model[find_nearest(b, phase)]*rate
         if flare_rate >= flare_check:
             location = interval
-            counter = 0 
+            counter = 0
             for locations in location_list:
                 while location > locations - 100 and location < locations + 100 and counter < 10000:
                     location = np.random.randint(50, length-50)
@@ -97,7 +98,7 @@ def SPI_Geo_flare_injection(light_curve, period, a, e, Rst, arg_periastron, los_
             location_list.append(location)
             flares += 1
     return lc, random_time
-    
+
 def SPI_Cubic(ratio, loc, e, a, period, length = 200):
     probability_density = []
     # bool_list = []
@@ -126,10 +127,6 @@ def amp_log_normal(n):
 def FWHM_uniform(n):
     return np.random.uniform(0.001388888, 0.041)
 
-def find_nearest(array, value):
-    array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
-    return idx
 
 def SPI_kappa_flare_injection(light_curve, kappa, loc, pl_period, sp_type = 'M', flare_type='Flaring', fast=False, theta_param = 0, phi_param = 0):
     rng = np.random.default_rng()
@@ -163,7 +160,7 @@ def SPI_kappa_flare_injection(light_curve, kappa, loc, pl_period, sp_type = 'M',
         flare_rate = model[find_nearest(a, phase)]*rate
         if flare_rate >= flare_check:
             location = interval
-            counter = 0 
+            counter = 0
             for locations in location_list:
                 while location > locations - 100 and location < locations + 100 and counter < 10000:
                     location = rng.integers(50, length-50)
