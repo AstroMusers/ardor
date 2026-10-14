@@ -25,13 +25,11 @@ class PCATFlareFit:
 
 
 def _time_bin_edges(time_days: np.ndarray) -> tuple[np.ndarray, float]:
-    cadence = np.diff(time_days)
-    if np.any(cadence <= 0.0):
+    from tdpy.numerics import midpoint_bin_edges
+
+    if np.any(np.diff(time_days) <= 0.0):
         raise ValueError("time_days must be strictly increasing")
-    edges = np.empty(time_days.size + 1, dtype=float)
-    edges[1:-1] = 0.5 * (time_days[:-1] + time_days[1:])
-    edges[0] = time_days[0] - 0.5 * cadence[0]
-    edges[-1] = time_days[-1] + 0.5 * cadence[-1]
+    edges = midpoint_bin_edges(time_days)
     offset = 1.0 - edges[0]  # [day], keeps PCAT's log-grid time axis positive
     return edges + offset, offset
 

@@ -11,6 +11,18 @@ from ardor.Roman.flare_color import get_data_file
 RATIO_GRID_FILES = {"F087": "F087.csv", "F213": "F213.csv"}
 
 
+def load_flare_data_csv(filepath):
+    """Load time, flux, and uncertainty arrays for either Roman sampler."""
+    print(f"Reading from {filepath}...")
+    dataframe = pd.read_csv(filepath)
+    missing = {"time", "flux", "yerr"}.difference(dataframe.columns)
+    if missing:
+        raise ValueError(f"flare_data.csv is missing required columns: {', '.join(sorted(missing))}")
+    if len(dataframe) < 2:
+        raise ValueError("flare_data.csv must contain at least 2 rows")
+    return tuple(dataframe[column].to_numpy(dtype=float) for column in ("time", "flux", "yerr"))
+
+
 def normalize_ratio_filter(ratio_filter):
     if ratio_filter is None or pd.isna(ratio_filter):
         return "F087"
@@ -77,6 +89,119 @@ def infer_ratio_grid_bounds(ratio_grid):
         "ebv_min": float(np.min(ratio_grid["ebv_values"])),
         "ebv_max": float(np.max(ratio_grid["ebv_values"])),
     }
+
+
+def load_ratio_data_csv(filepath, aux_quiescent_flux=None, flare_quiescent_flux=None):
+    """Load one auxiliary ratio datum in relative-excess or absolute-flux form.
+
+    Absolute input is converted to auxiliary-band excess using the supplied
+    quiescent fluxes. The returned value and uncertainty use the same units.
+    """
+    dataframe = pd.read_csv(filepath)
+    if len(dataframe) != 1:
+        raise ValueError(f"ratio_data.csv must have exactly 1 row, got {len(dataframe)}")
+
+    row = dataframe.iloc[0]
+    if "time" not in row.index:
+        raise ValueError("ratio_data.csv is missing required column: time")
+
+    has_relative = all(column in row.index for column in ["value", "err"])
+    has_absolute = all(column in row.index for column in ["flux_abs", "err_abs"])
+    if has_relative:
+        if pd.isna(row["value"]) or pd.isna(row["err"]):
+            raise ValueError("ratio_data.csv has missing value/err for relative-input format")
+        return {
+            "time": float(row["time"]),
+            "value": float(row["value"]),
+            "err": float(row["err"]),
+            "input_mode": "relative",
+        }
+
+    if has_absolute:
+        if pd.isna(row["flux_abs"]) or pd.isna(row["err_abs"]):
+            raise ValueError("ratio_data.csv has missing flux_abs/err_abs for absolute-input format")
+        flux_abs = float(row["flux_abs"])
+        err_abs = float(row["err_abs"])
+        if aux_quiescent_flux is None or flare_quiescent_flux is None:
+            raise ValueError(
+                "ratio_data.csv uses flux_abs/err_abs. Provide both aux_quiescent_flux "
+                "and flare_quiescent_flux as absolute quantities."
+            )
+        if float(aux_quiescent_flux) <= 0.0:
+            raise ValueError("aux_quiescent_flux must be > 0 when using absolute auxiliary flux")
+        if float(flare_quiescent_flux) <= 0.0:
+            raise ValueError("flare_quiescent_flux must be > 0 when using absolute auxiliary flux")
+
+        aux_quiescent_flux = float(aux_quiescent_flux)
+        flare_quiescent_flux = float(flare_quiescent_flux)
+        return {
+            "time": float(row["time"]),
+            "value": flux_abs - aux_quiescent_flux,
+            "err": err_abs,
+            "input_mode": "absolute",
+            "flux_abs": flux_abs,
+            "err_abs": err_abs,
+            "aux_quiescent_flux": aux_quiescent_flux,
+            "flare_quiescent_flux": flare_quiescent_flux,
+        }
+
+    raise ValueError(
+        "ratio_data.csv must contain either columns (time,value,err) or (time,flux_abs,err_abs)"
+    )
+
+
+def ensure_ratio_param_specs(param_specs, ratio_grid):
+    """Append Teff/E(B-V) priors from the grid when they are missing."""
+    specs = list(param_specs)
+    existing_names = {spec["name"].lower() for spec in specs}
+    bounds = infer_ratio_grid_bounds(ratio_grid)
+
+    if "teff" not in existing_names:
+        specs.append(
+            {
+                "name": "teff",
+                "prior_type": "uniform",
+                "low": bounds["teff_min"],
+                "high": bounds["teff_max"],
+            }
+        )
+    if "ebv" not in existing_names:
+        specs.append(
+            {
+                "name": "ebv",
+                "prior_type": "uniform",
+                "low": bounds["ebv_min"],
+                "high": bounds["ebv_max"],
+            }
+        )
+    return specs
+
+
+def parameter_names(baseline_type="none", n_spline_knots=5, use_ratio_model=False):
+    """Return parameter names in model-vector order."""
+    names = ["tpeak", "fwhm", "ampl", "sigma"]
+    if baseline_type == "sine":
+        names.extend(["base_c0", "base_amp", "base_freq", "base_phase"])
+    elif baseline_type == "spline":
+        names.extend([f"spline_c{i}" for i in range(n_spline_knots)])
+    if use_ratio_model:
+        names.extend(["teff", "ebv"])
+    return names
+
+
+def truth_vector_from_names(names, truth):
+    """Build a truth vector aligned with the selected parameter names."""
+    truths = []
+    spline_coeffs = truth.get("spline_coeffs")
+    for name in names:
+        if name.startswith("spline_c") and spline_coeffs is not None:
+            idx = int(name.replace("spline_c", ""))
+            truths.append(float(spline_coeffs[idx]))
+        elif name in truth:
+            truths.append(float(truth[name]))
+        else:
+            truths.append(np.nan)
+    return truths
 
 
 def baseline_model(t, baseline_type="none", params=None, spline_knots=None):

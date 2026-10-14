@@ -27,5 +27,6 @@ setup(
    extras_require={
       'pcat': ['pcat @ git+https://github.com/tansudaylan/pcat.git'],
       'allesfitter': ['allesfitter'],
+      'roman': ['tdpy @ git+https://github.com/tansudaylan/tdpy.git', 'emcee', 'dynesty'],
    },
 )

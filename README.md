@@ -42,6 +42,14 @@ We inject simulated flares into real light curves and run injection-recovery and
 
 ![](../ardor/graphics/Injection_Recovery_Parameters.png)
 
+## Roman flare fits
+
+Install the Roman sampling dependencies with `pip install -e '.[roman]'`.
+The MCMC and nested samplers share the flare model and CSV loader in
+`ardor.Roman.flare_model`. Both build custom KDE priors with
+`tdpy.numerics.build_kde_prior_from_samples`, retaining their existing grid
+normalization and prior metadata.
+
 # Statistical Tests
 For a particular planetary system, we test whether the observed flare phases are consistent with a uniform distribution. Ardor provides two approaches:
 - Goodness-of-fit (GoF) tests

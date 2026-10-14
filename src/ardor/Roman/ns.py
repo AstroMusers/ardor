@@ -18,26 +18,37 @@ runs dynesty to infer flare, baseline, and intrinsic scatter parameters.
 import argparse
 from functools import partial
 import multiprocessing as mp
-import sys
 from pathlib import Path
+from ardor.Flares.aflare import aflare1
 from ardor.Roman.flare_model import (
     RATIO_GRID_FILES,
     baseline_model,
+    ensure_ratio_param_specs,
     infer_ratio_filter_from_path,
     infer_ratio_grid_bounds,
     interpolate_ratio,
+    load_flare_data_csv,
+    load_ratio_data_csv,
     load_ratio_grid,
     log_likelihood,
     model_flux,
     normalize_ratio_filter,
+    parameter_names,
     ratio_model_value,
     resolve_ratio_grid_path,
     split_theta,
+    truth_vector_from_names,
 )
 import numpy as np
 import pandas as pd
-from scipy.stats import gaussian_kde
 from scipy.special import erfcinv
+from tdpy.numerics import (
+    build_kde_prior_from_samples as _build_kde_prior,
+    prepare_kde_prior_spec as _prepare_kde_prior_spec,
+    prepare_parameter_prior_specs as _prepare_param_specs,
+    weighted_median as _weighted_median,
+    weighted_quantile as _weighted_quantile,
+)
 
 
 try:
@@ -47,38 +58,6 @@ except ImportError as exc:
         "dynesty is required for this script. Install with: pip install dynesty"
     ) from exc
 
-try:
-    from ardor.Flares.aflare import aflare1
-except ImportError:
-    # Allow running this script directly from the Roman folder.
-    repo_root = Path(__file__).resolve().parents[1]
-    ardor_src = repo_root / "ardor" / "src"
-    if ardor_src.exists():
-        sys.path.insert(0, str(ardor_src))
-    from ardor.Flares.aflare import aflare1
-
-
-def load_flare_data_csv(filepath):
-    """Load flare light-curve data from a CSV file.
-
-    Expected columns:
-        time, flux, yerr
-    """
-    df = pd.read_csv(filepath)
-    required = {"time", "flux", "yerr"}
-    missing = required.difference(df.columns)
-    if missing:
-        missing_cols = ", ".join(sorted(missing))
-        raise ValueError(f"flare_data.csv is missing required columns: {missing_cols}")
-    if len(df) < 2:
-        raise ValueError("flare_data.csv must contain at least 2 rows")
-
-    t = df["time"].to_numpy(dtype=float)
-    flux = df["flux"].to_numpy(dtype=float)
-    yerr = df["yerr"].to_numpy(dtype=float)
-    return t, flux, yerr
-
-
 def build_kde_prior_from_samples(
     samples,
     low=None,
@@ -87,254 +66,27 @@ def build_kde_prior_from_samples(
     grid_size=4096,
 ):
     """Build an inverse-CDF representation of a 1D KDE prior."""
-    samples = np.asarray(samples, dtype=float).reshape(-1)
-    samples = samples[np.isfinite(samples)]
-    if samples.size < 2:
-        raise ValueError("KDE prior requires at least 2 finite samples.")
-
     if grid_size < 256:
         raise ValueError("KDE prior grid_size must be at least 256.")
-
-    sample_std = float(np.std(samples, ddof=1)) if samples.size > 1 else 0.0
-    sample_range = float(np.max(samples) - np.min(samples))
-    fallback_width = sample_std if sample_std > 0.0 else max(sample_range, 1.0)
-    padding_scale = 3.0 * fallback_width if fallback_width > 0.0 else 1.0
-
-    domain_low = float(low) if low is not None else float(np.min(samples) - padding_scale)
-    domain_high = float(high) if high is not None else float(np.max(samples) + padding_scale)
-    if not np.isfinite(domain_low) or not np.isfinite(domain_high) or domain_high <= domain_low:
-        raise ValueError("KDE prior bounds must define a finite interval with high > low.")
-
-    kde_kwargs = {}
-    if bandwidth is not None:
-        kde_kwargs["bw_method"] = float(bandwidth)
-    kde = gaussian_kde(samples, **kde_kwargs)
-
-    x_grid = np.linspace(domain_low, domain_high, int(grid_size), dtype=float)
-    pdf = np.asarray(kde(x_grid), dtype=float)
-    pdf = np.clip(pdf, 0.0, None)
-    dx = float(x_grid[1] - x_grid[0])
-    pdf_integral = float(np.sum(pdf) * dx)
-    if not np.isfinite(pdf_integral) or pdf_integral <= 0.0:
-        raise ValueError("KDE prior produced a non-finite or zero integral over the sampling domain.")
-
-    pdf /= pdf_integral
-    cdf = np.cumsum(pdf) * dx
-    cdf[0] = 0.0
-    cdf[-1] = 1.0
-
-    unique_cdf, unique_idx = np.unique(cdf, return_index=True)
-    if unique_cdf.size < 2:
-        raise ValueError("KDE prior CDF is degenerate; broaden the bounds or use different samples.")
-
-    return {
-        "kind": "kde",
-        "x_grid": x_grid[unique_idx],
-        "cdf_grid": unique_cdf,
-        "low": domain_low,
-        "high": domain_high,
-        "bandwidth": None if bandwidth is None else float(bandwidth),
-        "grid_size": int(grid_size),
-        "n_samples": int(samples.size),
-    }
+    prior = _build_kde_prior(samples, low, high, bandwidth, grid_size, normalization="rectangle")
+    prior["x_grid"] = prior.pop("cdf_x_grid")
+    prior.pop("pdf_grid")
+    return prior
 
 
 def prepare_custom_prior_spec(spec, custom_prior_samples=None):
     """Resolve and precompute custom prior metadata for fast prior transforms."""
-    prepared = dict(spec)
-    custom_kind = str(prepared.get("custom_kind", prepared.get("prior_kind", "kde"))).strip().lower()
-    if custom_kind != "kde":
-        raise ValueError(
-            f"Unsupported custom prior kind '{custom_kind}' for {prepared.get('name', '?')}."
-        )
-
-    if custom_prior_samples is None:
-        custom_prior_samples = {}
-
-    param_name = str(prepared.get("name", "")).strip()
-    if param_name not in custom_prior_samples:
-        raise ValueError(
-            f"Custom KDE prior for parameter {prepared.get('name', '?')} requires an entry in "
-            "custom_prior_samples passed to nested_sampling_pipeline()."
-        )
-
-    sample_input = custom_prior_samples[param_name]
-    if isinstance(sample_input, dict):
-        if "samples" not in sample_input:
-            raise ValueError(
-                f"custom_prior_samples['{param_name}'] must contain a 'samples' entry."
-            )
-        samples = sample_input["samples"]
-        bandwidth = sample_input.get("bandwidth", prepared.get("bandwidth"))
-        grid_size = sample_input.get("grid_size", prepared.get("grid_size", 4096))
-        low = sample_input.get("low", prepared.get("low"))
-        high = sample_input.get("high", prepared.get("high"))
-        custom_kind = str(sample_input.get("custom_kind", custom_kind)).strip().lower()
-    else:
-        samples = sample_input
-        bandwidth = prepared.get("bandwidth")
-        grid_size = prepared.get("grid_size", 4096)
-        low = prepared.get("low")
-        high = prepared.get("high")
-
-    if custom_kind != "kde":
-        raise ValueError(
-            f"Unsupported custom prior kind '{custom_kind}' for {prepared.get('name', '?')}."
-        )
-
-    samples = np.asarray(samples, dtype=float).reshape(-1)
-    samples = samples[np.isfinite(samples)]
-    if samples.size < 2:
-        raise ValueError(
-            f"Custom KDE prior for parameter {prepared.get('name', '?')} requires at least 2 finite samples."
-        )
-
-    prior_data = build_kde_prior_from_samples(
-        samples,
-        low=low,
-        high=high,
-        bandwidth=bandwidth,
-        grid_size=grid_size,
+    return _prepare_kde_prior_spec(
+        spec, custom_prior_samples, prior_builder=build_kde_prior_from_samples,
+        pipeline_name="nested_sampling_pipeline()",
     )
-
-    prepared["custom_kind"] = custom_kind
-    prepared["bandwidth"] = prior_data["bandwidth"]
-    prepared["grid_size"] = prior_data["grid_size"]
-    prepared["cdf_grid"] = prior_data["cdf_grid"]
-    prepared["x_grid"] = prior_data["x_grid"]
-    prepared["low"] = prior_data["low"]
-    prepared["high"] = prior_data["high"]
-    return prepared
 
 
 def prepare_param_specs(param_specs, custom_prior_samples=None):
     """Precompute any custom prior metadata needed before sampling."""
-    prepared_specs = []
-    for spec in param_specs:
-        prior_type = str(spec.get("prior_type", "uniform")).strip().lower()
-        if prior_type == "custom":
-            prepared_specs.append(
-                prepare_custom_prior_spec(spec, custom_prior_samples=custom_prior_samples)
-            )
-        else:
-            prepared_specs.append(dict(spec))
-    return prepared_specs
-
-
-def load_ratio_data_csv(filepath, aux_quiescent_flux=None, flare_quiescent_flux=None):
-    """Load a single auxiliary data point used with the ratio grid model.
-
-      Supported column sets:
-        1) time, value, err
-           where value is already relative flare excess in the auxiliary band
-
-        2) time, flux_abs, err_abs
-           where flux_abs is absolute measured flux and err_abs is its 1-sigma
-                  uncertainty. This mode requires both aux_quiescent_flux and
-                  flare_quiescent_flux, and compares excess-over-quiescent in
-                  absolute units:
-                          aux_abs_excess = flux_abs - aux_quiescent_flux
-                          model_abs_excess = ratio * flare_rel_excess * flare_quiescent_flux
-
-    The observed value is modeled as:
-        value ~= ratio(Teff, E(B-V)) * flare_excess(time)
-    """
-    df = pd.read_csv(filepath)
-    if len(df) != 1:
-        raise ValueError(f"ratio_data.csv must have exactly 1 row, got {len(df)}")
-
-    row = df.iloc[0]
-    if "time" not in row.index:
-        raise ValueError("ratio_data.csv is missing required column: time")
-
-    has_relative = all(col in row.index for col in ["value", "err"])
-    has_absolute = all(col in row.index for col in ["flux_abs", "err_abs"])
-
-    if has_relative:
-        if pd.isna(row["value"]) or pd.isna(row["err"]):
-            raise ValueError("ratio_data.csv has missing value/err for relative-input format")
-        return {
-            "time": float(row["time"]),
-            "value": float(row["value"]),
-            "err": float(row["err"]),
-            "input_mode": "relative",
-        }
-
-    if has_absolute:
-        if pd.isna(row["flux_abs"]) or pd.isna(row["err_abs"]):
-            raise ValueError("ratio_data.csv has missing flux_abs/err_abs for absolute-input format")
-        flux_abs = float(row["flux_abs"])
-        err_abs = float(row["err_abs"])
-
-        if aux_quiescent_flux is None or flare_quiescent_flux is None:
-            raise ValueError(
-                "ratio_data.csv uses flux_abs/err_abs. Provide both aux_quiescent_flux "
-                "and flare_quiescent_flux as absolute quantities."
-            )
-        if float(aux_quiescent_flux) <= 0.0:
-            raise ValueError("aux_quiescent_flux must be > 0 when using absolute auxiliary flux")
-        if float(flare_quiescent_flux) <= 0.0:
-            raise ValueError("flare_quiescent_flux must be > 0 when using absolute auxiliary flux")
-
-        aux_quiescent_flux = float(aux_quiescent_flux)
-        flare_quiescent_flux = float(flare_quiescent_flux)
-        return {
-            "time": float(row["time"]),
-            "value": flux_abs - aux_quiescent_flux,
-            "err": err_abs,
-            "input_mode": "absolute",
-            "flux_abs": flux_abs,
-            "err_abs": err_abs,
-            "aux_quiescent_flux": aux_quiescent_flux,
-            "flare_quiescent_flux": flare_quiescent_flux,
-        }
-
-    raise ValueError(
-        "ratio_data.csv must contain either columns (time,value,err) or (time,flux_abs,err_abs)"
+    return _prepare_param_specs(
+        param_specs, custom_prior_samples, prepare_custom_prior=prepare_custom_prior_spec,
     )
-
-
-def ensure_ratio_param_specs(param_specs, ratio_grid):
-    """Append default Teff/E(B-V) priors from the grid if they are missing."""
-    specs = list(param_specs)
-    existing_names = {spec["name"].lower() for spec in specs}
-    bounds = infer_ratio_grid_bounds(ratio_grid)
-
-    if "teff" not in existing_names:
-        specs.append(
-            {
-                "name": "teff",
-                "prior_type": "uniform",
-                "low": bounds["teff_min"],
-                "high": bounds["teff_max"],
-            }
-        )
-    if "ebv" not in existing_names:
-        specs.append(
-            {
-                "name": "ebv",
-                "prior_type": "uniform",
-                "low": bounds["ebv_min"],
-                "high": bounds["ebv_max"],
-            }
-        )
-
-    return specs
-
-
-def parameter_names(baseline_type="none", n_spline_knots=5, use_ratio_model=False):
-    """Return ordered parameter names for selected baseline model."""
-    names = ["tpeak", "fwhm", "ampl", "sigma"]
-
-    if baseline_type == "sine":
-        names.extend(["base_c0", "base_amp", "base_freq", "base_phase"])
-    elif baseline_type == "spline":
-        names.extend([f"spline_c{i}" for i in range(n_spline_knots)])
-
-    if use_ratio_model:
-        names.extend(["teff", "ebv"])
-
-    return names
 
 
 def apply_prior_transform_value(
@@ -470,12 +222,7 @@ def prior_transform(
 
 def weighted_quantile(values, quantiles, sample_weight):
     """Compute weighted quantiles for posterior summaries."""
-    try:
-        from tdpy.numerics import weighted_quantile as _weighted_quantile
-        return _weighted_quantile(values, quantiles, sample_weight=sample_weight)
-    except ImportError:
-        sorter = np.argsort(values)
-        return np.interp(quantiles, np.cumsum(sample_weight[sorter]) / np.sum(sample_weight), values[sorter])
+    return _weighted_quantile(values, quantiles, sample_weight=sample_weight)
 
 
 def summarize_posterior(samples, weights, names):
@@ -491,11 +238,7 @@ def summarize_posterior(samples, weights, names):
 
 def weighted_median_params(samples, weights):
     """Return weighted median parameter vector."""
-    try:
-        from tdpy.numerics import weighted_median as _weighted_median
-        return _weighted_median(samples, sample_weight=weights, axis=0)
-    except ImportError:
-        return np.array([weighted_quantile(samples[:, i], [0.50], weights)[0] for i in range(samples.shape[1])])
+    return _weighted_median(samples, sample_weight=weights, axis=0)
 
 
 def make_corner_plot(samples, weights, names, truths=None, output_path="ns_corner.png"):
@@ -831,23 +574,6 @@ def run_nested_sampling(
             sampler.run_nested(dlogz=dlogz, maxiter=maxiter, print_progress=True)
 
     return sampler.results
-
-
-def truth_vector_from_names(names, truth):
-    """Build a truth vector aligned with names for plotting."""
-    truths = []
-    spline_coeffs = truth.get("spline_coeffs", None)
-
-    for name in names:
-        if name.startswith("spline_c") and spline_coeffs is not None:
-            idx = int(name.replace("spline_c", ""))
-            truths.append(float(spline_coeffs[idx]))
-        elif name in truth:
-            truths.append(float(truth[name]))
-        else:
-            truths.append(np.nan)
-
-    return truths
 
 
 def load_settings_csv(filepath):

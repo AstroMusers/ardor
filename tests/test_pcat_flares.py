@@ -8,6 +8,23 @@ from astropy.io import fits
 from ardor.Flares import pcat_flares
 
 
+def test_flare_bin_edges_reuse_upstream_midpoints_and_preserve_positive_axis(monkeypatch):
+    from unittest.mock import Mock
+    import tdpy.numerics
+
+    shared_edges = Mock(wraps=tdpy.numerics.midpoint_bin_edges)
+    monkeypatch.setattr(tdpy.numerics, "midpoint_bin_edges", shared_edges)
+    time_days = np.array([-2.0, -1.0, 3.0, 5.0, 8.0])  # [day]
+    edges, offset = pcat_flares._time_bin_edges(time_days)
+    original_edges = np.array([-2.5, -1.5, 1.0, 4.0, 6.5, 9.5])  # [day]
+    assert offset == 3.5
+    np.testing.assert_array_equal(edges, original_edges + offset)
+    assert edges[0] == 1.0
+    np.testing.assert_array_equal(np.diff(edges), np.diff(original_edges))
+    shared_edges.assert_called_once()
+    np.testing.assert_array_equal(shared_edges.call_args.args[0], time_days)
+
+
 def test_allesfitter_is_not_required_to_import_pcat_backend(monkeypatch):
     monkeypatch.setitem(sys.modules, "allesfitter", None)
 
