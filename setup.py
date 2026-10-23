@@ -26,6 +26,7 @@ setup(
    ],
    extras_require={
       'pcat': ['pcat @ git+https://github.com/tansudaylan/pcat.git'],
+      'bokeh': ['bokeh'],
       'allesfitter': ['allesfitter'],
       'roman': ['tdpy @ git+https://github.com/tansudaylan/tdpy.git', 'emcee', 'dynesty'],
    },

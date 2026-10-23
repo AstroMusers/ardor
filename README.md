@@ -43,9 +43,11 @@ Each flare cutout gets its own PCAT run directory. The PCAT posterior retains th
 
 The [variable-flare notebook](examples/pcat_variable_flares.ipynb) runs the
 same synthetic Tier 2 input through `tier3_pcat()` and displays the full-baseline
-fit and sampled flare-count distribution. Its 1,200-sweep smoke chain is for
-workflow illustration, not convergence or recovery-rate assessment. Generated
-input and fit figures are written directly under `examples/visuals/`.
+fit and sampled flare-count distribution. Install the optional interactive
+renderer with `python -m pip install -e '.[bokeh]'`; the notebook then writes
+hoverable HTML views of the flux posterior and flare-count posterior beside the
+static figures under `examples/visuals/`. Its 1,200-sweep smoke chain is for
+workflow illustration, not convergence or recovery-rate assessment.
 
 ## Testing flare recovery
 We inject simulated flares into real light curves and run injection-recovery and precision-recall tests across flare parameter space. These tests help us see which flares the pipeline finds and which it misses.

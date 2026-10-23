@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -120,6 +121,157 @@ def save_fit_figures(fit, injected_peak_times, run_name: str) -> list[Path]:
     return [fit_path, count_path]
 
 
+def save_fit_bokeh_figures(fit, injected_peak_times, run_name: str) -> list[Path]:
+    """Save interactive views of the same variable-count PCAT posterior."""
+    from bokeh.layouts import column
+    from bokeh.models import ColumnDataSource, HoverTool, Span
+    from bokeh.plotting import figure
+    from tdpy.plotting import save_bokeh_html
+
+    output_directory = EXAMPLE_PATH / "visuals"
+    output_directory.mkdir(parents=True, exist_ok=True)
+    quantiles = posterior_flux_quantiles(fit)
+    time_hours = (fit.time_days - fit.time_days[0]) * 24.0  # [hour]
+    median_flux = quantiles[1]
+    source = ColumnDataSource({
+        "time_hours": time_hours,
+        "flux": fit.flux,
+        "uncertainty": fit.uncertainty,
+        "lower_flux": quantiles[0],
+        "median_flux": median_flux,
+        "upper_flux": quantiles[2],
+        "residual_sigma": (fit.flux - median_flux) / fit.uncertainty,
+    })
+    fit_plot = figure(
+        title="PCAT flare fit and posterior interval",
+        width=850,
+        height=420,
+        sizing_mode="stretch_width",
+        tools="pan,wheel_zoom,box_zoom,reset,save",
+        x_axis_label="Time [hour]",
+        y_axis_label="Relative flux",
+    )
+    fit_plot.varea(
+        x="time_hours",
+        y1="lower_flux",
+        y2="upper_flux",
+        source=source,
+        fill_color="#007360",
+        fill_alpha=0.22,
+        legend_label="PCAT 68% posterior interval",
+    )
+    fit_plot.line(
+        "time_hours",
+        "median_flux",
+        source=source,
+        color="#007360",
+        line_width=2,
+        legend_label="PCAT posterior median",
+    )
+    fit_plot.scatter(
+        "time_hours",
+        "flux",
+        source=source,
+        color="#454545",
+        size=5,
+        legend_label="Synthetic observed flux",
+    )
+    fit_plot.add_tools(HoverTool(tooltips=[
+        ("Time [hour]", "@time_hours{0.00}"),
+        ("Flux", "@flux{0.0000}"),
+        ("Uncertainty", "@uncertainty{0.0000}"),
+        ("PCAT median", "@median_flux{0.0000}"),
+    ]))
+    for peak_time in injected_peak_times:
+        fit_plot.add_layout(Span(
+            location=(peak_time - fit.time_days[0]) * 24.0,
+            dimension="height",
+            line_color="#A51417",
+            line_dash="dotted",
+            line_width=1.5,
+        ))
+    fit_plot.legend.location = "top_right"
+    fit_plot.legend.click_policy = "hide"
+    fit_plot.grid.visible = False
+
+    residual_plot = figure(
+        title="Posterior residuals",
+        width=850,
+        height=230,
+        sizing_mode="stretch_width",
+        x_range=fit_plot.x_range,
+        tools="pan,wheel_zoom,box_zoom,reset,save",
+        x_axis_label="Time [hour]",
+        y_axis_label="Residual [sigma]",
+    )
+    residual_plot.scatter(
+        "time_hours",
+        "residual_sigma",
+        source=source,
+        color="#454545",
+        size=5,
+    )
+    residual_plot.add_layout(Span(
+        location=0.0,
+        dimension="width",
+        line_color="#777777",
+        line_width=1,
+    ))
+    residual_plot.grid.visible = False
+    fit_path = output_directory / f"pcat_variable_flare_fit_{run_name}.html"
+    fit_relative_path = Path(os.path.relpath(fit_path, Path.cwd()))
+    save_bokeh_html(
+        column(fit_plot, residual_plot, sizing_mode="stretch_width"),
+        fit_relative_path,
+        title="Ardor PCAT variable-flare fit",
+    )
+
+    flare_counts = np.asarray(fit.posterior.listpostnumbelem, dtype=int).ravel()
+    values, counts = np.unique(flare_counts, return_counts=True)
+    count_source = ColumnDataSource({
+        "flare_count": values,
+        "probability": counts / counts.sum(),
+    })
+    count_plot = figure(
+        title="PCAT flare-count posterior",
+        width=700,
+        height=360,
+        x_range=(float(values.min()) - 0.5, float(values.max()) + 0.5),
+        y_range=(0.0, 1.0),
+        sizing_mode="stretch_width",
+        tools="pan,wheel_zoom,box_zoom,reset,save",
+        x_axis_label="Number of flares",
+        y_axis_label="Posterior probability",
+    )
+    count_renderer = count_plot.vbar(
+        x="flare_count",
+        top="probability",
+        width=0.8,
+        source=count_source,
+        color="#A51417",
+    )
+    count_plot.add_tools(HoverTool(
+        renderers=[count_renderer],
+        tooltips=[("Flares", "@flare_count"), ("Probability", "@probability{0.000}")],
+    ))
+    count_plot.add_layout(Span(
+        location=int(np.size(injected_peak_times)),
+        dimension="height",
+        line_color="#007360",
+        line_dash="dashed",
+        line_width=2,
+    ))
+    count_plot.grid.visible = False
+    count_path = output_directory / f"pcat_variable_flare_count_{run_name}.html"
+    count_relative_path = Path(os.path.relpath(count_path, Path.cwd()))
+    save_bokeh_html(
+        count_plot,
+        count_relative_path,
+        title="Ardor PCAT sampled flare count",
+    )
+    return [fit_path, count_path]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--numbswep", type=int, default=20_000)
@@ -151,6 +303,10 @@ def main():
         numbproc=1 if arguments.smoke else arguments.numbproc,
     )
     save_fit_figures(fits[0], injected_peak_times, run_name)
+    try:
+        save_fit_bokeh_figures(fits[0], injected_peak_times, run_name)
+    except ImportError:
+        print("Install Bokeh to create the interactive example figures.")
     sampled_counts = np.asarray(fits[0].posterior.listpostnumbelem).astype(int).ravel()
     print(
         f"Injected {injected_peak_times.size} flares; "

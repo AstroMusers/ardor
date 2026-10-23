@@ -2,6 +2,7 @@ import json
 import importlib
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -22,10 +23,45 @@ def test_variable_flare_notebook_uses_pcat_pipeline_and_keeps_paths_private():
     document = json.dumps(notebook)
 
     assert "tier3_pcat(" in code
+    assert "save_fit_bokeh_figures(" in code
     assert "simulate_light_curve(" in code
     assert "save_fit_figures(" in code
     assert "does not test convergence" in document
     assert "/" + "Users/" not in document
+
+
+def test_bokeh_flare_figures_use_the_same_pcat_posterior(tmp_path, monkeypatch):
+    pytest.importorskip("bokeh")
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[1] / "examples"))
+    from pcat_variable_flares import save_fit_bokeh_figures
+
+    monkeypatch.setattr(
+        sys.modules["pcat_variable_flares"], "EXAMPLE_PATH", tmp_path
+    )
+    time_days = np.linspace(0.0, 0.3, 40)  # [day]
+    flux = 1.0 + 0.02 * np.exp(-0.5 * ((time_days - 0.1) / 0.01) ** 2)
+    posterior_flux = np.stack([flux, flux * 1.001, flux * 0.999])[:, :, None, None]
+    fit = SimpleNamespace(
+        posterior=SimpleNamespace(
+            listpostcntpmodl=posterior_flux,
+            listpostnumbelem=np.array([1, 2, 2, 3, 3]),
+        ),
+        time_days=time_days,
+        flux=flux,
+        uncertainty=np.full(time_days.size, 0.003),
+        count_scale=np.ones(time_days.size),
+    )
+
+    paths = save_fit_bokeh_figures(fit, np.array([0.1, 0.2]), "test_run")
+
+    assert [path.name for path in paths] == [
+        "pcat_variable_flare_fit_test_run.html",
+        "pcat_variable_flare_count_test_run.html",
+    ]
+    fit_html, count_html = [path.read_text(encoding="utf-8") for path in paths]
+    assert "PCAT flare fit and posterior interval" in fit_html
+    assert "PCAT flare-count posterior" in count_html
+    assert "/" + "Users/" not in fit_html + count_html
 
 
 def test_flare_bin_edges_reuse_upstream_midpoints_and_preserve_positive_axis(monkeypatch):
