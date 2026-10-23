@@ -41,6 +41,12 @@ fits = tier3_pcat(
 
 Each flare cutout gets its own PCAT run directory. The PCAT posterior retains the sampled flare count and catalog samples instead of forcing them into the fixed-count Allesfitter CSV schema. A simulated end-to-end example is available with `python examples/pcat_variable_flares.py --smoke`.
 
+The [variable-flare notebook](examples/pcat_variable_flares.ipynb) runs the
+same synthetic Tier 2 input through `tier3_pcat()` and displays the full-baseline
+fit and sampled flare-count distribution. Its 1,200-sweep smoke chain is for
+workflow illustration, not convergence or recovery-rate assessment. Generated
+input and fit figures are written directly under `examples/visuals/`.
+
 ## Testing flare recovery
 We inject simulated flares into real light curves and run injection-recovery and precision-recall tests across flare parameter space. These tests help us see which flares the pipeline finds and which it misses.
 

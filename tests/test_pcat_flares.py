@@ -1,4 +1,6 @@
+import json
 import importlib
+from pathlib import Path
 import sys
 
 import numpy as np
@@ -6,6 +8,24 @@ import pytest
 from astropy.io import fits
 
 from ardor.Flares import pcat_flares
+
+
+def test_variable_flare_notebook_uses_pcat_pipeline_and_keeps_paths_private():
+    path = Path(__file__).parents[1] / "examples" / "pcat_variable_flares.ipynb"
+    print("Reading from examples/pcat_variable_flares.ipynb...")
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    code = "\n".join(
+        "".join(cell["source"])
+        for cell in notebook["cells"]
+        if cell["cell_type"] == "code"
+    )
+    document = json.dumps(notebook)
+
+    assert "tier3_pcat(" in code
+    assert "simulate_light_curve(" in code
+    assert "save_fit_figures(" in code
+    assert "does not test convergence" in document
+    assert "/" + "Users/" not in document
 
 
 def test_flare_bin_edges_reuse_upstream_midpoints_and_preserve_positive_axis(monkeypatch):

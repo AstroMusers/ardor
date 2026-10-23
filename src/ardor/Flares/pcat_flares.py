@@ -7,6 +7,16 @@ from pathlib import Path
 
 import numpy as np
 
+from ardor.paths import get_repository_path
+from tdpy.verbosity import print
+
+
+def _log_path(path):
+    try:
+        return Path(path).resolve().relative_to(get_repository_path()).as_posix()
+    except ValueError:
+        return Path(path).name
+
 
 @dataclass
 class PCATFlareFit:
@@ -142,7 +152,7 @@ def fit_variable_flares_pcat(
         ),
     ):
         path = input_directory / filename
-        print(f"Writing to {path}...")
+        print(f"Writing to {_log_path(path)}...")
         astropy.io.fits.writeto(path, np.asarray(values, dtype=float), overwrite=True)
 
     time_days = configuration["time_days"]
@@ -237,7 +247,7 @@ def fit_variable_flares_pcat(
         / run_directory.name
         / "gdatfinlpost"
     )
-    print(f"Reading from {posterior_path}...")
+    print(f"Reading from {_log_path(posterior_path)}...")
     posterior = pcat_main.readfile(str(posterior_path))
     return PCATFlareFit(
         posterior=posterior,
@@ -257,7 +267,7 @@ def fit_tier2_csv_pcat(target_file, run_directory, **fit_options):
     """Fit one Ardor Tier 2 flare CSV with PCAT's variable-count sampler."""
 
     target_file = Path(target_file)
-    print(f"Reading from {target_file}...")
+    print(f"Reading from {_log_path(target_file)}...")
     with target_file.open(encoding="utf-8") as file_object:
         reference_bjd = float(file_object.readline().strip().lstrip("# "))
     data = np.loadtxt(target_file, delimiter=",", comments="#", ndmin=2)

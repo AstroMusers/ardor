@@ -16,6 +16,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from pcat.time_series import evaluate_flare_profile
+from tdpy.verbosity import print
 
 from ardor.Flares.pcat_flares import posterior_flux_quantiles, tier3_pcat
 
@@ -98,7 +99,7 @@ def save_fit_figures(fit, injected_peak_times, run_name: str) -> list[Path]:
     axes[1].set_xlabel("Time [hour]")
     figure.tight_layout()
     fit_path = output_directory / f"pcat_variable_flare_fit_{run_name}.png"
-    print(f"Writing to {fit_path}...")
+    print(f"Writing to visuals/{fit_path.name}...")
     figure.savefig(fit_path, dpi=250, bbox_inches="tight", facecolor="white")
     plt.close(figure)
 
@@ -113,7 +114,7 @@ def save_fit_figures(fit, injected_peak_times, run_name: str) -> list[Path]:
     axis.legend(loc="upper right", fontsize=8)
     figure.tight_layout()
     count_path = output_directory / f"pcat_variable_flare_count_{run_name}.png"
-    print(f"Writing to {count_path}...")
+    print(f"Writing to visuals/{count_path.name}...")
     figure.savefig(count_path, dpi=250, bbox_inches="tight", facecolor="white")
     plt.close(figure)
     return [fit_path, count_path]
