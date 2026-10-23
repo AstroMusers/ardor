@@ -11,8 +11,9 @@ import glob
 import os
 from pathlib import Path
 import pandas as pd
+from ardor.paths import get_repository_path
 
-DEFAULT_CATALOG_DIR = Path(__file__).resolve().parents[3] / "catalogs"
+DEFAULT_CATALOG_DIR = get_repository_path() / "catalogs"
 
 
 class Catalog:

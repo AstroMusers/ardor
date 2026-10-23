@@ -28,9 +28,10 @@ from ardor.Flares.aflare import aflare1, aflare
 from scipy.interpolate import make_interp_spline
 from pathlib import Path
 import os
+from ardor.paths import get_repository_path
 
-DEFAULT_ROMAN_RATIO_DIR = Path(__file__).resolve().parents[3] / "catalogs"
-DEFAULT_VEGA_PATH = Path(__file__).resolve().parents[3] / "catalogs" / "alpha_lyr_stis_011.fits"
+DEFAULT_ROMAN_RATIO_DIR = get_repository_path() / "catalogs"
+DEFAULT_VEGA_PATH = get_repository_path() / "catalogs" / "alpha_lyr_stis_011.fits"
 
 
 def get_data_file(filename: str) -> Path:

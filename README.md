@@ -2,6 +2,10 @@
 
 Do stellar flares prefer a particular orbital phase, or are we seeing a pattern in a small sample? We use Ardor to detect and model flares in photometry, then test their timing for correlations. Our primary science case is magnetic star-planet interactions. We also look for links with stellar rotation, using simulations and statistical tests to examine how much the data can tell us.
 
+## Repository paths
+
+Set `ARDOR_PATH` to the checkout directory when using Ardor from another location. If it is unset, the package uses its checkout root. Local inputs and generated figures belong in the ignored `data/` and `visuals/` directories.
+
 # Flare Detection Pipeline
 `ardor` incorporates a flare detection pipeline to identify, characterize, and validate stellar flares in photometry. This pipeline uses four **tiers**:
 - Tier 0: Light Curve Detrending

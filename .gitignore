@@ -1,6 +1,8 @@
 # Python bytecode files
 __pycache__/
 *.py[cod]
+data/
+visuals/
 *$py.class
 
 # Packaging
