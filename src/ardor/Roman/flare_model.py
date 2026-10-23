@@ -11,6 +11,55 @@ from ardor.Roman.flare_color import get_data_file
 RATIO_GRID_FILES = {"F087": "F087.csv", "F213": "F213.csv"}
 
 
+def load_sampler_settings_csv(filepath, *, sampler):
+    """Read Roman settings while retaining each sampler's defaults and fields."""
+    if sampler not in {"mcmc", "ns"}:
+        raise ValueError(f"Unknown Roman sampler '{sampler}'")
+    print(f"Reading from {filepath}...")
+    dataframe = pd.read_csv(filepath)
+    if len(dataframe) != 1:
+        raise ValueError(f"settings.csv must have exactly 1 row, got {len(dataframe)}")
+    row = dataframe.iloc[0]
+
+    def maybe_bool(value, default=False):
+        if pd.isna(value):
+            return default
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "y"}
+        return bool(value)
+
+    settings = {
+        "baseline_model": row.get("baseline_model", "none"),
+        "n_spline_knots": int(row.get("n_spline_knots", 5)),
+    }
+    if sampler == "mcmc":
+        nwalkers = row.get("nwalkers", row.get("nlive", 64))
+        nsteps = row.get("nsteps", row.get("maxiter", 2000))
+        nburn = row.get("nburn", 500)
+        settings.update({
+            "nwalkers": int(nwalkers) if pd.notna(nwalkers) else 64,
+            "nsteps": int(nsteps) if pd.notna(nsteps) else 2000,
+            "nburn": int(nburn) if pd.notna(nburn) else 500,
+        })
+    else:
+        settings.update({
+            "nlive": int(row.get("nlive", 200)),
+            "dlogz": float(row.get("dlogz", 0.5)),
+            "maxiter": int(row.get("maxiter", None)) if pd.notna(row.get("maxiter")) else None,
+        })
+    settings.update({
+        "n_cores": max(1, int(row.get("n_cores", 1))) if pd.notna(row.get("n_cores", 1)) else 1,
+        "flare_data_csv": row.get("flare_data_csv", None) if pd.notna(row.get("flare_data_csv", None)) else None,
+        "use_ratio_model": maybe_bool(row.get("use_ratio_model", False), default=False),
+        "ratio_filter": normalize_ratio_filter(row.get("ratio_filter", "F087")),
+        "ratio_grid_csv": row.get("ratio_grid_csv", None) if pd.notna(row.get("ratio_grid_csv", None)) else None,
+        "ratio_data_csv": row.get("ratio_data_csv", None) if pd.notna(row.get("ratio_data_csv", None)) else None,
+        "aux_quiescent_flux": float(row.get("aux_quiescent_flux")) if pd.notna(row.get("aux_quiescent_flux")) else None,
+        "flare_quiescent_flux": float(row.get("flare_quiescent_flux")) if pd.notna(row.get("flare_quiescent_flux")) else None,
+    })
+    return settings
+
+
 def load_flare_data_csv(filepath):
     """Load time, flux, and uncertainty arrays for either Roman sampler."""
     print(f"Reading from {filepath}...")
@@ -299,6 +348,8 @@ def log_likelihood(
     sigma = theta[3]
     if not np.isfinite(sigma) or sigma <= 0.0:
         return -np.inf
+    from tdpy.numerics import logpdf_gaus
+
     model = model_flux(
         theta,
         t,
@@ -308,7 +359,7 @@ def log_likelihood(
         use_ratio_model=ratio_data is not None and ratio_grid is not None,
     )
     variance = yerr**2 + sigma**2
-    result = -0.5 * np.sum((flux - model) ** 2 / variance + np.log(2.0 * np.pi * variance))
+    result = np.sum(logpdf_gaus(flux, model, np.sqrt(variance)))
     if ratio_data is not None:
         if ratio_grid is None:
             raise ValueError("ratio_grid must be provided when ratio_data is used")
@@ -327,8 +378,5 @@ def log_likelihood(
         if not np.isfinite(auxiliary_model):
             return -np.inf
         auxiliary_variance = ratio_data["err"] ** 2
-        result -= 0.5 * (
-            (ratio_data["value"] - auxiliary_model) ** 2 / auxiliary_variance
-            + np.log(2.0 * np.pi * auxiliary_variance)
-        )
+        result += logpdf_gaus(ratio_data["value"], auxiliary_model, np.sqrt(auxiliary_variance))
     return result

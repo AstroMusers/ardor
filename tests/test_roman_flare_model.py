@@ -8,6 +8,7 @@ from ardor.Roman.flare_model import (
     load_flare_data_csv,
     load_ratio_data_csv,
     load_ratio_grid,
+    load_sampler_settings_csv,
     log_likelihood,
     model_flux,
     normalize_ratio_filter,
@@ -16,6 +17,107 @@ from ardor.Roman.flare_model import (
     split_theta,
     truth_vector_from_names,
 )
+
+
+@pytest.mark.parametrize("sampler_name, dependency", [("mcmc", "emcee"), ("ns", "dynesty")])
+@pytest.mark.parametrize("boolean, expected", [("", False), ("True", True), (" Y ", True), ("yes", True), ("1", True), ("0", False), ("false", False), ("no", False), ("2", True), ("other", False)])
+def test_shared_settings_csv_preserves_boolean_and_sampler_defaults(tmp_path, capsys, sampler_name, dependency, boolean, expected):
+    from importlib import import_module
+
+    pytest.importorskip(dependency)
+    sampler = import_module(f"ardor.Roman.{sampler_name}")
+    assert sampler._load_sampler_settings_csv is load_sampler_settings_csv
+    filepath = tmp_path / "settings.csv"
+    print(f"Writing to {filepath}...")
+    filepath.write_text(f"baseline_model,use_ratio_model\nnone,{boolean}\n", encoding="utf-8")
+    capsys.readouterr()
+    settings = sampler.load_settings_csv(filepath)
+    assert capsys.readouterr().out == f"Reading from {filepath}...\n"
+    expected_settings = {
+        "baseline_model": "none", "n_spline_knots": 5, "n_cores": 1,
+        "flare_data_csv": None, "use_ratio_model": expected, "ratio_filter": "F087",
+        "ratio_grid_csv": None, "ratio_data_csv": None,
+        "aux_quiescent_flux": None, "flare_quiescent_flux": None,
+    }
+    if sampler_name == "mcmc":
+        expected_settings.update(nwalkers=64, nsteps=2000, nburn=500)
+    else:
+        expected_settings.update(nlive=200, dlogz=0.5, maxiter=None)
+    assert settings == expected_settings
+
+
+@pytest.mark.parametrize("sampler_name", ["mcmc", "ns"])
+def test_shared_settings_csv_preserves_overrides_and_missing_values(tmp_path, sampler_name):
+    filepath = tmp_path / "settings.csv"
+    print(f"Writing to {filepath}...")
+    filepath.write_text(
+        "baseline_model,n_spline_knots,nlive,maxiter,dlogz,n_cores,ratio_filter,aux_quiescent_flux,flare_quiescent_flux,ratio_data_csv\n"
+        "spline,7,80,900,0.2,0, f213 ,12,34,ratio.csv\n", encoding="utf-8",
+    )
+    settings = load_sampler_settings_csv(filepath, sampler=sampler_name)
+    assert settings["baseline_model"] == "spline"
+    assert settings["n_spline_knots"] == 7
+    assert settings["n_cores"] == 1
+    assert settings["ratio_filter"] == "F213"
+    assert settings["ratio_data_csv"] == "ratio.csv"
+    assert settings["aux_quiescent_flux"] == 12.0
+    assert settings["flare_quiescent_flux"] == 34.0
+    if sampler_name == "mcmc":
+        assert (settings["nwalkers"], settings["nsteps"], settings["nburn"]) == (80, 900, 500)
+    else:
+        assert (settings["nlive"], settings["maxiter"], settings["dlogz"]) == (80, 900, 0.2)
+    print(f"Writing to {filepath}...")
+    filepath.write_text("baseline_model,nwalkers,nsteps,nburn,n_cores,ratio_filter\nnone,,,,,\n", encoding="utf-8")
+    settings = load_sampler_settings_csv(filepath, sampler=sampler_name)
+    assert settings["n_cores"] == 1 and settings["ratio_filter"] == "F087"
+    if sampler_name == "mcmc":
+        assert (settings["nwalkers"], settings["nsteps"], settings["nburn"]) == (64, 2000, 500)
+
+
+@pytest.mark.parametrize("sampler_name", ["mcmc", "ns"])
+@pytest.mark.parametrize("contents, count", [("baseline_model\n", 0), ("baseline_model\nnone\nspline\n", 2)])
+def test_shared_settings_csv_rejects_wrong_row_count(tmp_path, sampler_name, contents, count):
+    filepath = tmp_path / "settings.csv"
+    print(f"Writing to {filepath}...")
+    filepath.write_text(contents, encoding="utf-8")
+    with pytest.raises(ValueError, match=f"exactly 1 row, got {count}"):
+        load_sampler_settings_csv(filepath, sampler=sampler_name)
+
+
+def test_shared_settings_csv_rejects_unknown_sampler(tmp_path):
+    with pytest.raises(ValueError, match="Unknown Roman sampler"):
+        load_sampler_settings_csv(tmp_path / "settings.csv", sampler="unknown")
+
+
+@pytest.mark.parametrize("auxiliary_error", [None, 0.2, -0.2])
+def test_roman_likelihood_preserves_variance_and_auxiliary_normalization(monkeypatch, auxiliary_error):
+    from unittest.mock import Mock
+    from ardor.Roman import flare_model
+
+    time = np.array([0.0, 0.1])  # [day]
+    observed = np.array([1.0, 2.0])
+    model = np.array([0.9, 1.8])
+    uncertainty = np.array([0.1, 0.4])
+    theta = np.array([0.0, 0.2, 0.3, 0.05])
+    monkeypatch.setattr(flare_model, "model_flux", Mock(return_value=model))
+    auxiliary = Mock(return_value=(2.0, 3.0))
+    monkeypatch.setattr(flare_model, "ratio_model_value", auxiliary)
+    variance = uncertainty**2 + theta[3]**2
+    expected = -0.5 * np.sum((observed - model)**2 / variance + np.log(2.0 * np.pi * variance))
+    ratio_data = None
+    ratio_grid = None
+    if auxiliary_error is not None:
+        ratio_data = {"time": 0.1, "value": 3.0, "err": auxiliary_error}
+        ratio_grid = {}
+        expected -= 0.5 * (1.0 / auxiliary_error**2 + np.log(2.0 * np.pi * auxiliary_error**2))
+    actual = log_likelihood(theta, time, observed, uncertainty, ratio_data=ratio_data, ratio_grid=ratio_grid)
+    assert actual == pytest.approx(expected, rel=1e-14)
+    if auxiliary_error is None:
+        auxiliary.assert_not_called()
+    else:
+        auxiliary.assert_called_once()
+        auxiliary.return_value = (np.nan, 3.0)
+        assert log_likelihood(theta, time, observed, uncertainty, ratio_data=ratio_data, ratio_grid=ratio_grid) == -np.inf
 
 
 def test_shared_flare_csv_loader(tmp_path, capsys):

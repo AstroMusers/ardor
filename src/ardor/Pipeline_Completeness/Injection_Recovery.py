@@ -140,7 +140,6 @@ def Injection_Recovery(input_dir, output_dir, star_type = 'G', rate = False, old
                     lc, flare_inject_dict_T1, flare_inject_dict_T2 = Flare_Injection(input_dir + '/' + M_dwarves + '/' + folders, detrend = True, rates = rate, sp_type = star_type)
                     if folders.endswith('a_fast-lc.fits') == True:
                         continue
-                        fast = True
                     elif folders.endswith('a_fast-lc.fits') == False:
                         fast = False
                     t2 = timer.time()
@@ -327,7 +326,6 @@ def Precision_Recall(input_dir, output_dir, sigma_list, chi_set, star_type = 'G'
                     lc, flare_inject_dict_T1, flare_inject_dict_T2 = Flare_Injection(input_dir + '/' + M_dwarves + '/' + folders, detrend = True, rates = rate, sp_type = star_type, PR = True, sigma = sigma, chi_sq = 10)
                     if folders.endswith('a_fast-lc.fits') == True:
                         continue
-                        fast = True
                     elif folders.endswith('a_fast-lc.fits') == False:
                         fast = False
                     t2 = timer.time()

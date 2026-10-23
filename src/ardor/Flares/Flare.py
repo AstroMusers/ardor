@@ -1393,7 +1393,7 @@ def _plot_flare_cutout(time, flux, error, popt, event_idx, flare_length,
     ax.set_title(title, fontsize=14, fontweight='bold')
 
     # Add fit statistics as text
-    textstr = f'$\chi^2_r$ = {chi_squared:.3f}\n$R^2$ = {r_sq:.3f}'
+    textstr = f'$\\chi^2_r$ = {chi_squared:.3f}\n$R^2$ = {r_sq:.3f}'
     props = dict(boxstyle='round', facecolor='wheat' if accepted else 'lightcoral', alpha=0.8)
     ax.text(0.02, 0.98, textstr, transform=ax.transAxes, fontsize=11,
             verticalalignment='top', bbox=props)

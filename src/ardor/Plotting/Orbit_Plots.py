@@ -224,7 +224,7 @@ def Animate_Inverse_Cubic():
     ax3.set_xlabel('Phase', font=font, size = 17)
     fig.text(0.04, 0.5, 'Probability Density', va='center', rotation='vertical', 
               font=font, size = 17)
-    ax1.legend(borderpad = 0.5, labelspacing=0.25, title = '$\mathrm{B_{pl}/B_{star}}$',
+    ax1.legend(borderpad = 0.5, labelspacing=0.25, title = '$\\mathrm{B_{pl}/B_{star}}$',
                 handlelength = 0.75)
     ax3.legend(borderpad = 0.5, labelspacing=0.25, title = 'e',
                 handlelength = 0.75)
@@ -271,7 +271,7 @@ def Plot_VM_Dist(kappas):
         c = next(color)
         phases = np.linspace(-np.pi, np.pi, num=500)
         pdf = vonmises.pdf(phases, loc = 0, kappa=kappa)
-        ax1.plot(UT.range_shift(phases, -np.pi, np.pi, 0, 1), pdf, label = '$\kappa_{SPI}=' + str(kappa) + '$', color = c)
+        ax1.plot(UT.range_shift(phases, -np.pi, np.pi, 0, 1), pdf, label = '$\\kappa_{SPI}=' + str(kappa) + '$', color = c)
         ax2.plot(UT.range_shift(phases, -np.pi, np.pi, 0, 2*np.pi), pdf, color = c)
         rticks = np.linspace(1, 0, num=5, endpoint=False)[::-1]
         ax1.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1])
@@ -282,13 +282,13 @@ def Plot_VM_Dist(kappas):
         ax2.set_yticklabels(np.round(rticks,2), font=font, fontsize=9)
         ax2.set_xticks([0, np.pi/4, np.pi/2, 3*np.pi/4, np.pi, 5*np.pi/4, 3*np.pi/2, 7*np.pi/4])
         ax2.set_xticklabels(['0', '', '0.25', '', '0.5', '', '0.75', ''], font=font, zorder=0)
-    ax2.text(-0.1, 1.2, '$\mathrm{Phase}$', font=font)
+    ax2.text(-0.1, 1.2, '$\\mathrm{Phase}$', font=font)
     ax1.set_ylabel('Probability Density', font=font)
     ax1.set_xlabel('Phase', font=font)
     ax1.tick_params(axis='both', which='major', labelfontfamily='serif', labelsize =9, zorder=-1)
     ax1.axvline(0.5, linestyle='--', color='black', alpha=0.5)
     ax1.legend(loc= 'upper left', handlelength=0.5, fontsize=8, ncol=1, frameon=False)
-    ax2.text(0, 0.3, '$\mathrm{Density}$', font=font, size=8,rotation=15)
+    ax2.text(0, 0.3, '$\\mathrm{Density}$', font=font, size=8,rotation=15)
     ax2.axvline(np.pi, linestyle='--', color='black', alpha=0.75, zorder=2)
     ax1.text(0.55, 0.9, 'Periastron',font=font, size=9)
     ax2.text(np.pi+0.35, 1, 'Periastron',font=font, size=9)

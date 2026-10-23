@@ -27,6 +27,7 @@ from ardor.Roman.flare_model import (
 	load_flare_data_csv,
 	load_ratio_data_csv,
 	load_ratio_grid,
+	load_sampler_settings_csv as _load_sampler_settings_csv,
 	log_likelihood,
 	model_flux,
 	normalize_ratio_filter,
@@ -475,37 +476,7 @@ def run_mcmc(
 
 
 def load_settings_csv(filepath):
-	df = pd.read_csv(filepath)
-	if len(df) != 1:
-		raise ValueError(f"settings.csv must have exactly 1 row, got {len(df)}")
-	row = df.iloc[0]
-
-	def maybe_bool(value, default=False):
-		if pd.isna(value):
-			return default
-		if isinstance(value, str):
-			return value.strip().lower() in {"1", "true", "yes", "y"}
-		return bool(value)
-
-	nwalkers = row.get("nwalkers", row.get("nlive", 64))
-	nsteps = row.get("nsteps", row.get("maxiter", 2000))
-	nburn = row.get("nburn", 500)
-
-	return {
-		"baseline_model": row.get("baseline_model", "none"),
-		"n_spline_knots": int(row.get("n_spline_knots", 5)),
-		"nwalkers": int(nwalkers) if pd.notna(nwalkers) else 64,
-		"nsteps": int(nsteps) if pd.notna(nsteps) else 2000,
-		"nburn": int(nburn) if pd.notna(nburn) else 500,
-		"n_cores": max(1, int(row.get("n_cores", 1))) if pd.notna(row.get("n_cores", 1)) else 1,
-		"flare_data_csv": row.get("flare_data_csv", None) if pd.notna(row.get("flare_data_csv", None)) else None,
-		"use_ratio_model": maybe_bool(row.get("use_ratio_model", False), default=False),
-		"ratio_filter": normalize_ratio_filter(row.get("ratio_filter", "F087")),
-		"ratio_grid_csv": row.get("ratio_grid_csv", None) if pd.notna(row.get("ratio_grid_csv", None)) else None,
-		"ratio_data_csv": row.get("ratio_data_csv", None) if pd.notna(row.get("ratio_data_csv", None)) else None,
-		"aux_quiescent_flux": float(row.get("aux_quiescent_flux")) if pd.notna(row.get("aux_quiescent_flux")) else None,
-		"flare_quiescent_flux": float(row.get("flare_quiescent_flux")) if pd.notna(row.get("flare_quiescent_flux")) else None,
-	}
+	return _load_sampler_settings_csv(filepath, sampler="mcmc")
 
 
 def load_params_csv(filepath):
