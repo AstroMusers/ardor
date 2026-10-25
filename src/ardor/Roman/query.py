@@ -10,6 +10,7 @@ import json
 import sys
 from astroquery.gaia import Gaia
 import numpy as np
+from tdpy.verbosity import print
 
 
 c = SkyCoord(l=0.5*u.deg, b=-1.4*u.deg, frame='galactic')
@@ -97,8 +98,8 @@ WHERE
     tbl = job.get_results()
     if output_csv is None:
         output_csv = os.path.join(os.getcwd(), "gaia_results.csv")
+    print(f"Writing to {output_csv}...")
     tbl.write(output_csv, format="csv", overwrite=True)
-    print(f"Saved CSV: {output_csv}")
     return tbl
 
 

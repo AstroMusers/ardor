@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import pandas as pd
 from ardor.paths import get_repository_path
+from tdpy.verbosity import print
 
 DEFAULT_CATALOG_DIR = get_repository_path() / "catalogs"
 

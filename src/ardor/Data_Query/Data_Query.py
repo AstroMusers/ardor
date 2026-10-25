@@ -15,6 +15,7 @@ from collections import namedtuple
 from astroquery.mast import Catalogs
 from ardor.SPI_Forward_Models.Orbit_Model_Library import transit_to_periastron_epoch
 from ardor.Data_Query.Catalog import Catalog
+from tdpy.verbosity import print
 import warnings
 import pandas as pd
 warnings.filterwarnings("ignore")

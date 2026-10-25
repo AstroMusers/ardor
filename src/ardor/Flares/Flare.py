@@ -356,7 +356,6 @@ def plot_transit_detrending(original_lc, mask, transit_segments, detrended_segme
     title_parts.append('Transit Detrending Overview')
     ax1.set_title(' - '.join(title_parts), fontsize=14, fontweight='bold')
     ax1.legend(loc='best', fontsize=10)
-    ax1.grid(True, alpha=0.3)
 
     # Plot 2: Reconstructed light curve with detrended transits (spans all columns)
     ax2 = fig.add_subplot(gs[1, :])
@@ -374,7 +373,6 @@ def plot_transit_detrending(original_lc, mask, transit_segments, detrended_segme
     ax2.set_ylabel('Normalized Flux', fontsize=12)
     ax2.set_title('Reconstructed Light Curve (Detrended Transits Integrated)', fontsize=12, fontweight='bold')
     ax2.legend(loc='best', fontsize=10)
-    ax2.grid(True, alpha=0.3)
 
     # Plot each transit segment in a grid
     for i, (orig_seg, detrend_seg) in enumerate(zip(transit_segments, detrended_segments)):
@@ -401,7 +399,6 @@ def plot_transit_detrending(original_lc, mask, transit_segments, detrended_segme
         ax.set_ylabel('Normalized Flux', fontsize=7)
         ax.set_title(f'Transit Segment {i+1}', fontsize=10, fontweight='bold')
         ax.legend(loc='best', fontsize=8)
-        ax.grid(True, alpha=0.3)
         ax.tick_params(labelsize=8)
 
     plt.tight_layout()
@@ -1399,7 +1396,6 @@ def _plot_flare_cutout(time, flux, error, popt, event_idx, flare_length,
             verticalalignment='top', bbox=props)
 
     ax.legend(loc='best', fontsize=10)
-    ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
 

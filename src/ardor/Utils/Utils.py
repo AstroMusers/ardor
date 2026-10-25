@@ -14,6 +14,7 @@ from astropy.table import Table
 from astropy.io import ascii
 from ardor.Data_Query.Data_Query import Query_Transit_Solution, Query_Host_Params_TOI, Query_Planet_Parameters
 from tdpy.numerics import find_nearest, find_nearest_index, range_shift, rescale_range
+from tdpy.verbosity import print
 
 warnings.filterwarnings("ignore")
 def Data_Transfer(source_file, output_file, ID_column_header, column_headers=[], output_dir = None, specifier_column = None):

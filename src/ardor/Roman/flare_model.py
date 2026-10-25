@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from scipy.interpolate import CubicSpline, RegularGridInterpolator
+from tdpy.verbosity import print
 
 from ardor.Flares.aflare import aflare1
 from ardor.Roman.flare_color import get_data_file

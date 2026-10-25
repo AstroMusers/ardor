@@ -372,7 +372,6 @@ def make_data_model_plot(
 			aux_ax.set_yticks([])
 			aux_ax.set_xlabel("Auxiliary Flux (absolute)" if ratio_data.get("input_mode") == "absolute" else "Auxiliary Value")
 			aux_ax.set_title("Auxiliary Posterior")
-			aux_ax.grid(alpha=0.25, axis="x")
 			aux_ax.legend(loc="best", fontsize=8)
 
 			if ratio_ax is not None and ratio_predictions.size > 0:
@@ -399,13 +398,11 @@ def make_data_model_plot(
 				ratio_ax.set_yticks([])
 				ratio_ax.set_xlabel("Ratio")
 				ratio_ax.set_title("Ratio Posterior")
-				ratio_ax.grid(alpha=0.25, axis="x")
 				ratio_ax.legend(loc="best", fontsize=8)
 
 	ax.set_xlabel("Time")
 	ax.set_ylabel("Relative Flux")
 	ax.legend(loc="best")
-	ax.grid(alpha=0.25)
 
 	fig.tight_layout()
 	fig.savefig(output_path, dpi=180)

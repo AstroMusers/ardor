@@ -66,7 +66,6 @@ def plot_mwd(RA,Dec,org=0,title='Mollweide projection', projection='mollweide'):
     ax.xaxis.label.set_fontsize(12)
     ax.set_ylabel("Dec")
     ax.yaxis.label.set_fontsize(12)
-    ax.grid(True)
 
 def cost_function(CVZ_RA, CVZ_DEC, CVZ_radius, targets_RAs, targets_DECs, target_weight=1):
     coord = SkyCoord(CVZ_RA, CVZ_DEC, unit='deg')

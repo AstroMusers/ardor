@@ -551,7 +551,6 @@ def plot_flares_from_catalog(csv_file, host_id, fits_dir, flare_lengths=None,
             ax.tick_params(direction='in', length=3, width=0.5, colors='black')
             ax.set_xticklabels([])  # No tick labels
             ax.set_yticklabels([])  # No tick labels
-            ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
             # Set y-axis limits based on data in the window
             if len(flux_window) > 0:
                 max_flux = np.max(flux_window)
@@ -771,7 +770,6 @@ def plot_long_timeseries_with_gaps(csv_file, host_id, fits_dir, gap_days=1.0,
                 for fe in flare_epochs[in_seg]:
                     ax.axvspan(fe, fe+0.01, color='orange', alpha=0.3, zorder=2)
 
-            ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
             ax.set_ylabel('Rel. Flux', fontsize=9)
             ax.tick_params(direction='in', length=3, width=0.5, colors='black')
 

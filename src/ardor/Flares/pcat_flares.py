@@ -45,6 +45,8 @@ def _time_bin_edges(time_days: np.ndarray) -> tuple[np.ndarray, float]:
 
 
 def _flare_fit_configuration(time_days, flux, uncertainty, baseline_flux=None):
+    if any(np.ma.is_masked(values) for values in (time_days, flux, uncertainty)):
+        raise ValueError("time, flux, and uncertainty must not contain masked observations")
     time_days = np.asarray(time_days, dtype=float)
     flux = np.asarray(flux, dtype=float)
     uncertainty = np.asarray(uncertainty, dtype=float)

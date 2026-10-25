@@ -21,7 +21,9 @@ from ardor.Roman.flare_model import (
 
 @pytest.mark.parametrize("sampler_name, dependency", [("mcmc", "emcee"), ("ns", "dynesty")])
 @pytest.mark.parametrize("boolean, expected", [("", False), ("True", True), (" Y ", True), ("yes", True), ("1", True), ("0", False), ("false", False), ("no", False), ("2", True), ("other", False)])
-def test_shared_settings_csv_preserves_boolean_and_sampler_defaults(tmp_path, capsys, sampler_name, dependency, boolean, expected):
+def test_shared_settings_csv_preserves_boolean_and_sampler_defaults(
+    tmp_path, capsys, monkeypatch, sampler_name, dependency, boolean, expected
+):
     from importlib import import_module
 
     pytest.importorskip(dependency)
@@ -31,8 +33,13 @@ def test_shared_settings_csv_preserves_boolean_and_sampler_defaults(tmp_path, ca
     print(f"Writing to {filepath}...")
     filepath.write_text(f"baseline_model,use_ratio_model\nnone,{boolean}\n", encoding="utf-8")
     capsys.readouterr()
+    monkeypatch.setenv("TDPY_VERBOSITY", "0")
+    quiet_settings = sampler.load_settings_csv(filepath)
+    assert capsys.readouterr().out == ""
+    monkeypatch.setenv("TDPY_VERBOSITY", "1")
     settings = sampler.load_settings_csv(filepath)
     assert capsys.readouterr().out == f"Reading from {filepath}...\n"
+    assert quiet_settings == settings
     expected_settings = {
         "baseline_model": "none", "n_spline_knots": 5, "n_cores": 1,
         "flare_data_csv": None, "use_ratio_model": expected, "ratio_filter": "F087",
@@ -120,13 +127,17 @@ def test_roman_likelihood_preserves_variance_and_auxiliary_normalization(monkeyp
         assert log_likelihood(theta, time, observed, uncertainty, ratio_data=ratio_data, ratio_grid=ratio_grid) == -np.inf
 
 
-def test_shared_flare_csv_loader(tmp_path, capsys):
+def test_shared_flare_csv_loader(tmp_path, capsys, monkeypatch):
     filepath = tmp_path / "flare.csv"
     filepath.write_text("flux,yerr,time,extra\n1.0,0.01,0.0,a\n1.2,0.02,0.5,b\n", encoding="utf-8")
+    monkeypatch.setenv("TDPY_VERBOSITY", "0")
     time, flux, uncertainty = load_flare_data_csv(filepath)
     np.testing.assert_array_equal(time, [0.0, 0.5])
     np.testing.assert_array_equal(flux, [1.0, 1.2])
     np.testing.assert_array_equal(uncertainty, [0.01, 0.02])
+    assert capsys.readouterr().out == ""
+    monkeypatch.setenv("TDPY_VERBOSITY", "1")
+    load_flare_data_csv(filepath)
     assert capsys.readouterr().out == f"Reading from {filepath}...\n"
 
 

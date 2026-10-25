@@ -132,6 +132,35 @@ def test_variable_flare_fit_uses_pcat_transdimensional_model(tmp_path, monkeypat
     assert np.isfinite(exposures).all() and np.all(exposures > 0.0)
 
 
+@pytest.mark.parametrize("masked_input", ["time", "flux", "uncertainty"])
+def test_flare_configuration_rejects_masked_observations(masked_input):
+    inputs = {
+        "time": np.linspace(0.0, 0.1, 10),
+        "flux": np.ones(10),
+        "uncertainty": np.full(10, 0.01),
+    }
+    masked = np.ma.array(inputs[masked_input], mask=[False] * 9 + [True])
+    masked.data[-1] = 99.0
+    inputs[masked_input] = masked
+    with pytest.raises(ValueError, match="masked observations"):
+        pcat_flares._flare_fit_configuration(
+            inputs["time"], inputs["flux"], inputs["uncertainty"]
+        )
+
+
+def test_flare_configuration_accepts_unmasked_masked_array_containers():
+    time_days = np.linspace(0.0, 0.1, 10)
+    flux = np.ones(10)
+    uncertainty = np.full(10, 0.01)
+    expected = pcat_flares._flare_fit_configuration(time_days, flux, uncertainty)
+    result = pcat_flares._flare_fit_configuration(
+        np.ma.array(time_days, mask=False), np.ma.array(flux, mask=False),
+        np.ma.array(uncertainty, mask=False),
+    )
+    for name in ("time_days", "flux", "uncertainty", "bin_edges", "count_scale", "exposure"):
+        np.testing.assert_array_equal(result[name], expected[name])
+
+
 def test_planck_law_and_integrator_yield_positive_flux():
     from ardor.Utils.planck_law import planck_law, planck_integrator
 
