@@ -59,6 +59,8 @@ except ImportError as exc:
         "dynesty is required for this script. Install with: pip install dynesty"
     ) from exc
 
+weighted_quantile = _weighted_quantile
+
 def build_kde_prior_from_samples(
     samples,
     low=None,
@@ -219,11 +221,6 @@ def prior_transform(
         params.extend([teff, ebv])
 
     return np.array(params)
-
-
-def weighted_quantile(values, quantiles, sample_weight):
-    """Compute weighted quantiles for posterior summaries."""
-    return _weighted_quantile(values, quantiles, sample_weight=sample_weight)
 
 
 def summarize_posterior(samples, weights, names):

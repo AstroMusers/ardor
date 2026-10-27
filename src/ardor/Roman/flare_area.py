@@ -8,15 +8,21 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import CubicSpline, interp1d
 from scipy.integrate import quad
 from ardor.Utils.planck_law import planck_integrator
+from ardor.paths import get_data_path
+from pathlib import Path
+from tdpy.verbosity import print
 
 n_radius_bins = 30
 
 
-def run_flare_area_analysis():
-    radius_file = '/ugrad/whitsett.n/Roman/teff_binned_smoothed_radius.csv'
-    if not os.path.exists(radius_file):
+def run_flare_area_analysis(radius_file=None, flare_file=None):
+    """Read radius and flare data, sampling radii from the 3500–3600 K bin."""
+    radius_file = (get_data_path() / 'teff_binned_smoothed_radius.csv'
+                   if radius_file is None else Path(radius_file))
+    if not radius_file.exists():
         print(f"Data file not found: {radius_file}")
         return
+    print(f"Reading from {radius_file}...")
     radii = pd.read_csv(radius_file)
     test = radii['teff_3500_3600_K'].to_numpy()
     rad = radii['radius_bin_center'].to_numpy()
@@ -32,11 +38,13 @@ def run_flare_area_analysis():
     cdf = np.cumsum(pdf_vals)
     cdf /= cdf[-1]  # Normalize CDF to range [0, 1]
     inv_cdf = interp1d(cdf, x_grid, bounds_error=False, fill_value=(x_grid[0], x_grid[-1]))
-    u = np.random.rand(100)  # 10k samples
+    u = np.random.rand(100)
     samples = inv_cdf(u)
 
-    flare_file = '/ugrad/whitsett.n/Roman/Flare_Catalogs/All_Exoplanet_MCMC_Flares.csv'
-    if os.path.exists(flare_file):
+    flare_file = (get_data_path() / 'Flare_Catalogs' / 'All_Exoplanet_MCMC_Flares.csv'
+                  if flare_file is None else Path(flare_file))
+    if flare_file.exists():
+        print(f"Reading from {flare_file}...")
         flare_data = pd.read_csv(flare_file)
         print(flare_data.loc[(flare_data['FWHM'] > 0.02), ['Host_ID', '#']])
 

@@ -76,7 +76,7 @@ Ardor supports the Kolmogorov-Smirnov (KS), Anderson-Darling (AD), and Kuiper (K
 We fit the phase distribution with a von Mises probability density function (PDF):
 
 $$ f(x \mid \mu, \kappa) = \frac{\exp\left[\kappa \cos(x-\mu)\right]}{2\pi I_{0}(\kappa)}. $$
-The von Mises distribution is the circular counterpart of a Gaussian. A cluster that crosses phase zero stays together rather than splitting across histogram edges. The location parameter sets the peak's phase, and the concentration parameter sets how tightly the flares cluster around it. Ardor finds these parameters by minimizing the negative log-likelihood with `scipy.optimize.minimize`.
+The von Mises distribution is the circular counterpart of a Gaussian. Phases just below 1 and just above 0 are neighbors on the orbit, so flares clustered across that boundary remain together. The location parameter sets the peak's phase, and the concentration parameter sets how tightly the flares cluster around it. Ardor finds these parameters by minimizing the negative log-likelihood with `scipy.optimize.minimize`.
 
 ![](../ardor/graphics/CDF+VM_Poster.png)
 # Acknowledgements

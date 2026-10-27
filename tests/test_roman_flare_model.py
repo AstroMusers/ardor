@@ -19,6 +19,66 @@ from ardor.Roman.flare_model import (
 )
 
 
+@pytest.mark.parametrize('explicit_paths', [False, True])
+@pytest.mark.parametrize('verbosity', ['0', '1'])
+def test_flare_area_analysis_reads_configured_inputs_without_mutating_them(tmp_path, monkeypatch, capsys, explicit_paths, verbosity):
+    import pandas as pd
+    from ardor.Roman import flare_area
+
+    data = tmp_path / 'data'
+    data.mkdir()
+    catalog_directory = data / 'Flare_Catalogs'
+    catalog_directory.mkdir()
+    radius_file = data / 'teff_binned_smoothed_radius.csv'
+    flare_file = catalog_directory / 'All_Exoplanet_MCMC_Flares.csv'
+    pd.DataFrame({'radius_bin_center': [0.2, 0.4, 0.6, 0.8],
+                  'teff_3500_3600_K': [1.0, 2.0, 2.0, 1.0]}).to_csv(radius_file, index=False)
+    widths = np.array([0.03, 0.01])  # [day]
+    pd.DataFrame({'FWHM': widths, 'Host_ID': ['wide_flare', 'narrow_flare'],
+                  '#': [1, 2]}).to_csv(flare_file, index=False)
+    original_radius = radius_file.read_bytes()
+    original_flares = flare_file.read_bytes()
+    monkeypatch.setenv('ARDOR_PATH', str(tmp_path))
+    monkeypatch.setenv('TDPY_VERBOSITY', verbosity)
+    reader = pd.read_csv
+    read_paths = []
+
+    def read_csv(path, *args, **kwargs):
+        read_paths.append(path)
+        return reader(path, *args, **kwargs)
+
+    monkeypatch.setattr(flare_area.pd, 'read_csv', read_csv)
+    options = {'radius_file': radius_file, 'flare_file': flare_file} if explicit_paths else {}
+    random_state = np.random.get_state()
+    try:
+        np.random.seed(42)
+        result = flare_area.run_flare_area_analysis(**options)
+    finally:
+        np.random.set_state(random_state)
+
+    assert result is None
+    assert read_paths == [radius_file, flare_file]
+    output = capsys.readouterr().out
+    if verbosity == '0':
+        assert output == ''
+    else:
+        assert output.startswith(f'Reading from {radius_file}...\nReading from {flare_file}...\n')
+        assert 'wide_flare' in output
+        assert 'narrow_flare' not in output
+    assert radius_file.read_bytes() == original_radius
+    assert flare_file.read_bytes() == original_flares
+
+
+def test_flare_area_analysis_handles_absent_default_input(tmp_path, monkeypatch, capsys):
+    from ardor.Roman.flare_area import run_flare_area_analysis
+
+    monkeypatch.setenv('ARDOR_PATH', str(tmp_path))
+    monkeypatch.setenv('TDPY_VERBOSITY', '0')
+    assert run_flare_area_analysis() is None
+    assert capsys.readouterr().out == ''
+    assert not list(tmp_path.iterdir())
+
+
 @pytest.mark.parametrize("sampler_name, dependency", [("mcmc", "emcee"), ("ns", "dynesty")])
 @pytest.mark.parametrize("boolean, expected", [("", False), ("True", True), (" Y ", True), ("yes", True), ("1", True), ("0", False), ("false", False), ("no", False), ("2", True), ("other", False)])
 def test_shared_settings_csv_preserves_boolean_and_sampler_defaults(
@@ -221,6 +281,7 @@ def test_roman_posterior_summaries_use_shared_weighted_statistics(capsys):
     pytest.importorskip("dynesty")
     sampler = import_module("ardor.Roman.ns")
     assert sampler._weighted_quantile is weighted_quantile
+    assert sampler.weighted_quantile is weighted_quantile
     assert sampler._weighted_median is weighted_median
     samples = np.array([[10.0, 1.0], [0.0, 4.0], [20.0, 2.0], [30.0, 8.0]])
     weights = np.array([1.0, 4.0, 2.0, 3.0])
@@ -232,6 +293,22 @@ def test_roman_posterior_summaries_use_shared_weighted_statistics(capsys):
     sampler.summarize_posterior(samples, weights, ["first", "second"])
     output = capsys.readouterr().out
     assert "10.0000" in output and "3.0000" in output
+
+
+def test_mcmc_gaussian_prior_uses_shared_normal_log_density():
+    from importlib import import_module
+    from tdpy.numerics import logpdf_gaus
+
+    pytest.importorskip("emcee")
+    sampler = import_module("ardor.Roman.mcmc")
+    specification = {"name": "fwhm", "prior_type": "gaussian", "mean": 2.0, "std": 0.5}
+
+    assert sampler.log_prior([1.5], [specification]) == pytest.approx(
+        logpdf_gaus(1.5, 2.0, 0.5)
+    )
+    specification["std"] = 0.0
+    with pytest.raises(ValueError, match="std must be > 0"):
+        sampler.log_prior([1.5], [specification])
 
 
 def test_roman_posterior_summaries_preserve_weight_validation():

@@ -41,6 +41,7 @@ import numpy as np
 import pandas as pd
 from tdpy.numerics import (
 	build_kde_prior_from_samples as _build_kde_prior,
+	logpdf_gaus,
 	prepare_kde_prior_spec as _prepare_kde_prior_spec,
 	prepare_parameter_prior_specs as _prepare_param_specs,
 )
@@ -131,8 +132,7 @@ def log_prior(theta, param_specs):
 				raise ValueError(f"Gaussian prior requires mean/std for {spec.get('name', '?')}")
 			if std <= 0.0:
 				raise ValueError(f"Gaussian prior std must be > 0 for {spec.get('name', '?')}")
-			z = (value - mean) / std
-			lp += -0.5 * z * z - np.log(std) - 0.5 * np.log(2.0 * np.pi)
+			lp += logpdf_gaus(value, mean, std)
 			continue
 		if prior_type == "custom":
 			x_grid = spec.get("x_grid")

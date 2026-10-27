@@ -23,11 +23,12 @@ setup(
        'matplotlib',
        'pandas',
        'astropy',
+      'tdpy @ git+https://github.com/tansudaylan/tdpy.git@35df1703c6b63d6a62f7d44b12cf5928b5d355ed',
    ],
    extras_require={
       'pcat': ['pcat @ git+https://github.com/tansudaylan/pcat.git'],
       'bokeh': ['bokeh'],
       'allesfitter': ['allesfitter'],
-      'roman': ['tdpy @ git+https://github.com/tansudaylan/tdpy.git@35df1703c6b63d6a62f7d44b12cf5928b5d355ed', 'emcee', 'dynesty'],
+      'roman': ['emcee', 'dynesty'],
    },
 )
